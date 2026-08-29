@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useCmmStore, type CenterView } from "@/lib/store"
 import { OctagonAlert, Pause, Play } from "lucide-react"
 import dynamic from "next/dynamic"
+import { useEffect } from "react"
 
 const CmmScene = dynamic(() => import("@/components/cmm-scene").then((m) => m.CmmScene), {
   ssr: false,
@@ -93,6 +94,11 @@ function CenterStage() {
 }
 
 export function Workstation() {
+  const hydrate = useCmmStore((s) => s.hydrateFromStorage)
+  useEffect(() => {
+    hydrate()
+  }, [hydrate])
+
   return (
     <div className="flex h-dvh min-h-0 flex-col bg-background">
       <HeaderBar />

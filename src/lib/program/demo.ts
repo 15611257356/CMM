@@ -1,4 +1,4 @@
-import { PLATE, uid } from "@/lib/geom"
+import { PLATE } from "@/lib/geom"
 import type { GdtCheck, MeasurementProgram, ProgramStep } from "@/lib/program/types"
 
 function planePoints(): ProgramStep {
@@ -15,7 +15,7 @@ function planePoints(): ProgramStep {
     id: "feat-plane",
     kind: "plane",
     name: "上平面",
-    points: corners.map((nominal) => ({ id: uid("pt"), nominal })),
+    points: corners.map((nominal, index) => ({ id: `feat-plane-pt-${index}`, nominal })),
   }
 }
 
@@ -30,7 +30,7 @@ function circlePoints(id: string, name: string, cx: number, cy: number, cz: numb
     points: angles.map((deg) => {
       const rad = (deg * Math.PI) / 180
       return {
-        id: uid("pt"),
+        id: `${id}-pt-${deg}`,
         nominal: {
           x: cx + r * Math.cos(rad),
           y: cy + r * Math.sin(rad),

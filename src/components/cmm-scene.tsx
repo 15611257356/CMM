@@ -137,14 +137,14 @@ function SceneContents() {
         <MeasuredPoints />
       </group>
       <gridHelper args={[520, 26, "#3f4652", "#2a3038"]} position={[0, -44, 0]} />
-      <OrbitControls makeDefault minDistance={180} maxDistance={900} target={[0, 40, 0]} />
+      <OrbitControls makeDefault minDistance={180} maxDistance={980} target={[20, 50, 10]} />
     </>
   )
 }
 
 export function CmmScene() {
   return (
-    <Canvas camera={{ position: [280, 210, 310], fov: 42 }} dpr={[1, 1.6]}>
+    <Canvas camera={{ position: [340, 250, 390], fov: 40 }} dpr={[1, 1.6]}>
       <SceneContents />
     </Canvas>
   )

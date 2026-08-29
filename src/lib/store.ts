@@ -30,25 +30,22 @@ export const motion = new SimulatedMotionController()
 export const hardwareMotion = new HardwareMotionController()
 export const hardwareCamera = new HardwareCameraDriver()
 
-function loadProgram(): MeasurementProgram {
-  if (typeof window === "undefined") return createDemoProgram()
-  try {
-    const raw = localStorage.getItem(PROGRAM_KEY)
-    if (!raw) return createDemoProgram()
-    const parsed = JSON.parse(raw) as MeasurementProgram
-    if (!parsed?.steps?.length) return createDemoProgram()
-    return parsed
-  } catch {
-    return createDemoProgram()
-  }
-}
-
 function persistProgram(program: MeasurementProgram) {
   localStorage.setItem(PROGRAM_KEY, JSON.stringify(program))
 }
 
-function loadReport(): ReportSnapshot | null {
-  if (typeof window === "undefined") return null
+function readStoredProgram(): MeasurementProgram | null {
+  try {
+    const raw = localStorage.getItem(PROGRAM_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as MeasurementProgram
+    return parsed?.steps?.length ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function readStoredReport(): ReportSnapshot | null {
   try {
     const raw = localStorage.getItem(REPORT_KEY)
     return raw ? (JSON.parse(raw) as ReportSnapshot) : null
@@ -105,10 +102,12 @@ type AppState = {
   measureSpeed: number
   rapidSpeed: number
   visionImage: string | null
+  visionSize: { w: number; h: number } | null
   visionDetections: DetectedCircle[]
   visionError: string | null
   visionBusy: boolean
   hardwareNote: string
+  hydrateFromStorage: () => void
   log: (level: LogLevel, message: string) => void
   setView: (view: CenterView) => void
   setSelectedStep: (id: string | null) => void
@@ -133,7 +132,7 @@ type AppState = {
 
 export const useCmmStore = create<AppState>((set, get) => ({
   motion: motion.getSnapshot(),
-  program: loadProgram(),
+  program: createDemoProgram(),
   selectedStepId: null,
   currentStepId: null,
   running: false,
@@ -141,17 +140,27 @@ export const useCmmStore = create<AppState>((set, get) => ({
   abortRequested: false,
   results: [],
   gdtResults: [],
-  report: loadReport(),
+  report: null,
   logs: [],
   view: "machine",
   jogSpeed: 40,
   measureSpeed: 90,
   rapidSpeed: 280,
   visionImage: null,
+  visionSize: null,
   visionDetections: [],
   visionError: null,
   visionBusy: false,
   hardwareNote: hardwareCamera.isConnected() ? "相机已连接" : "工业相机未连接 · 使用示意图或上传图片",
+
+  hydrateFromStorage: () => {
+    const program = readStoredProgram()
+    const report = readStoredReport()
+    set({
+      ...(program ? { program } : {}),
+      ...(report ? { report } : {}),
+    })
+  },
 
   log: (level, message) =>
     set((s) => ({
@@ -398,6 +407,7 @@ export const useCmmStore = create<AppState>((set, get) => ({
     const url = createSamplePlateImage()
     set({
       visionImage: url,
+      visionSize: { w: 480, h: 336 },
       visionDetections: [],
       visionError: null,
       view: "vision",
@@ -409,6 +419,7 @@ export const useCmmStore = create<AppState>((set, get) => ({
     const url = URL.createObjectURL(file)
     set({
       visionImage: url,
+      visionSize: null,
       visionDetections: [],
       visionError: null,
       view: "vision",
@@ -425,6 +436,7 @@ export const useCmmStore = create<AppState>((set, get) => ({
     set({ visionBusy: true, visionError: null })
     try {
       const image = await imageDataFromUrl(url)
+      set({ visionSize: { w: image.width, h: image.height } })
       const cal =
         url.startsWith("data:") && image.width === 480
           ? sampleCalibration()

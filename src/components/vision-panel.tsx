@@ -96,9 +96,10 @@ export function VisionPanel() {
 function VisionOverlay() {
   const detections = useCmmStore((s) => s.visionDetections)
   const image = useCmmStore((s) => s.visionImage)
+  const size = useCmmStore((s) => s.visionSize)
   if (!image || detections.length === 0) return null
-  const w = Math.max(...detections.map((d) => d.px + d.radiusPx), 480)
-  const h = Math.max(...detections.map((d) => d.py + d.radiusPx), 336)
+  const w = size?.w ?? 480
+  const h = size?.h ?? 336
   return (
     <svg
       className="pointer-events-none absolute inset-3"
