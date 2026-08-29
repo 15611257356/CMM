@@ -15,8 +15,8 @@ const mono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "CMM 测量工作站",
-  description: "三坐标测量仿真工作站：运动控制、形位公差、视觉引导",
+  title: "舅舅公司 · 工艺与测量",
+  description: "制造工艺规划（CAPP）与三坐标测量工作站",
 }
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

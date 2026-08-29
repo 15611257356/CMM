@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useCmmStore, type CenterView } from "@/lib/store"
 import { OctagonAlert, Pause, Play } from "lucide-react"
 import dynamic from "next/dynamic"
+import Link from "next/link"
 import { useEffect } from "react"
 
 const CmmScene = dynamic(() => import("@/components/cmm-scene").then((m) => m.CmmScene), {
@@ -31,7 +32,9 @@ function HeaderBar() {
     <header className="flex flex-wrap items-center gap-2 border-b bg-card px-3 py-2">
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-sm font-semibold tracking-tight sm:text-base">CMM 测量工作站</h1>
+          <Link href="/" className="text-sm font-semibold tracking-tight hover:underline sm:text-base">
+            CMM 测量工作站
+          </Link>
           <Badge variant="secondary">仿真模式</Badge>
           <Badge variant="outline" className="hidden sm:inline-flex">
             驱动层接口已预留

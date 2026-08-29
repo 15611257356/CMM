@@ -1,5 +1,5 @@
-import { Workstation } from "@/components/workstation"
+import { CompanyHome } from "@/components/company-home"
 
 export default function Home() {
-  return <Workstation />
+  return <CompanyHome />
 }
