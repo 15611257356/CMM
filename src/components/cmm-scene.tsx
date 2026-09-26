@@ -229,7 +229,7 @@ function SceneContents() {
 
 export function CmmScene() {
   return (
-    <Canvas camera={{ position: [520, 460, 620], fov: 40, far: 5000 }} dpr={[1, 1.6]}>
+    <Canvas camera={{ position: [640, 560, 760], fov: 40, far: 5000 }} dpr={[1, 1.6]}>
       <SceneContents />
     </Canvas>
   )
