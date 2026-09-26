@@ -3,6 +3,7 @@ export type DetectedCircle = {
   px: number
   py: number
   radiusPx: number
+  /** 零件坐标（mm）。 */
   x: number
   y: number
   z: number

@@ -1,5 +1,6 @@
-import { PLATE, uid } from "@/lib/geom"
-import { imageToMachine } from "@/lib/vision/sample-image"
+import { uid } from "@/lib/geom"
+import { PLATE } from "@/lib/machine/setup"
+import { imageToPart } from "@/lib/vision/sample-image"
 import type { DetectedCircle, VisionCalibration } from "@/lib/vision/types"
 
 type Blob = {
@@ -86,16 +87,16 @@ function blobsToCircles(blobs: Blob[], cal: VisionCalibration): DetectedCircle[]
     const radiusPx = Math.sqrt(area / Math.PI)
     const boxR = Math.max(bw, bh) / 2
     if (Math.abs(radiusPx - boxR) / boxR > 0.45) continue
-    const machine = imageToMachine(cx, cy, cal)
+    const part = imageToPart(cx, cy, cal)
     const radius = (radiusPx / (cal.imageWidth - cal.padX * 2)) * PLATE.w
     circles.push({
       id: uid("vis"),
       px: cx,
       py: cy,
       radiusPx,
-      x: machine.x,
-      y: machine.y,
-      z: PLATE.z + PLATE.h,
+      x: part.x,
+      y: part.y,
+      z: 0,
       radius,
     })
   }
