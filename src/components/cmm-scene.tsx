@@ -43,13 +43,14 @@ function Frame({ T, children }: { T: RigidTransform; children: ReactNode }) {
 function Granite() {
   return (
     <group>
-      <mesh position={m(250, 200, -30)} receiveShadow>
+      {/* 台面和基座不要共面，否则拖动视角时深度缓冲会来回翻转，看起来像闪烁色块。 */}
+      <mesh position={m(250, 200, -31)} receiveShadow>
         <boxGeometry args={[600, 60, 520]} />
         <meshStandardMaterial color="#5f646c" roughness={0.85} metalness={0.05} />
       </mesh>
-      <mesh position={m(250, 200, 0.3)} receiveShadow>
-        <boxGeometry args={[560, 0.6, 480]} />
-        <meshStandardMaterial color="#7d838c" roughness={0.75} />
+      <mesh position={m(250, 200, -0.55)} receiveShadow>
+        <boxGeometry args={[560, 0.9, 480]} />
+        <meshStandardMaterial color="#7d838c" roughness={0.75} polygonOffset polygonOffsetFactor={-1} polygonOffsetUnits={-1} />
       </mesh>
       <mesh position={m(560, 200, 10)}>
         <boxGeometry args={[36, 20, 500]} />
@@ -64,8 +65,8 @@ function Pallet({ T }: { T: RigidTransform }) {
   const stemTop = s.center.z - s.radius * 0.8
   return (
     <Frame T={T}>
-      <mesh position={m(0, 0, -PALLET.height / 2)} castShadow receiveShadow>
-        <boxGeometry args={[PALLET.size.x, PALLET.height, PALLET.size.y]} />
+      <mesh position={m(0, 0, -PALLET.height / 2 - 0.2)} castShadow receiveShadow>
+        <boxGeometry args={[PALLET.size.x, PALLET.height - 0.4, PALLET.size.y]} />
         <meshStandardMaterial color="#3d5a73" metalness={0.45} roughness={0.35} />
       </mesh>
       <mesh position={m(s.center.x, s.center.y, stemTop / 2)}>
@@ -85,7 +86,14 @@ function Part({ T, holes }: { T: RigidTransform; holes: { x: number; y: number; 
     <Frame T={T}>
       <mesh position={m(PLATE.w / 2, PLATE.d / 2, -PLATE.h / 2)} castShadow receiveShadow>
         <boxGeometry args={[PLATE.w, PLATE.h, PLATE.d]} />
-        <meshStandardMaterial color="#c3c8d0" metalness={0.25} roughness={0.35} />
+        <meshStandardMaterial
+          color="#c3c8d0"
+          metalness={0.25}
+          roughness={0.35}
+          polygonOffset
+          polygonOffsetFactor={-1}
+          polygonOffsetUnits={-1}
+        />
       </mesh>
       {holes.map((h, i) => (
         <mesh key={i} position={m(h.x, h.y, -PLATE.h / 2 + 0.05)}>
@@ -102,7 +110,15 @@ function NominalGhost({ T }: { T: RigidTransform }) {
     <Frame T={T}>
       <mesh position={m(PLATE.w / 2, PLATE.d / 2, -PLATE.h / 2)}>
         <boxGeometry args={[PLATE.w, PLATE.h, PLATE.d]} />
-        <meshBasicMaterial color="#fbbf24" wireframe transparent opacity={0.35} />
+        <meshBasicMaterial
+          color="#fbbf24"
+          wireframe
+          transparent
+          opacity={0.45}
+          polygonOffset
+          polygonOffsetFactor={-2}
+          polygonOffsetUnits={-2}
+        />
       </mesh>
     </Frame>
   )
@@ -229,7 +245,12 @@ function SceneContents() {
 
 export function CmmScene() {
   return (
-    <Canvas camera={{ position: [640, 560, 760], fov: 40, far: 5000 }} dpr={[1, 1.6]}>
+    <Canvas
+      camera={{ position: [640, 560, 760], fov: 40, near: 8, far: 4000 }}
+      dpr={[1, 1.5]}
+      gl={{ antialias: true, alpha: false, stencil: false, powerPreference: "high-performance" }}
+      style={{ background: "#12151b" }}
+    >
       <SceneContents />
     </Canvas>
   )
