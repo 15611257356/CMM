@@ -4,6 +4,12 @@
 
 当前是纯软件仿真，不连接真实运动控制卡、测头和相机。上一阶段的 CAPP 工艺规划原型保留在 `/capp`，暂停迭代。纸面材料在 [`docs/`](./docs/) 目录。
 
+线上地址（GitHub Pages，不依赖本机）：[https://15611257356.github.io/CMM/](https://15611257356.github.io/CMM/)
+
+- [首页](https://15611257356.github.io/CMM/)
+- [预检机工作站](https://15611257356.github.io/CMM/cmm)
+- [CAPP](https://15611257356.github.io/CMM/capp)
+
 ## 本地运行
 
 需要 Node.js 20+。
