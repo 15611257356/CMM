@@ -1,29 +1,15 @@
 export type Vec3 = { x: number; y: number; z: number }
 export type Axis = "x" | "y" | "z"
 
+/** 预检机行程 500×400×300（与项目书一致），机械原点在 X0 Y0 Z 最高点。 */
 export const MACHINE = {
   xMin: 0,
-  xMax: 400,
+  xMax: 500,
   yMin: 0,
-  yMax: 300,
+  yMax: 400,
   zMin: 0,
-  zMax: 200,
-  home: { x: 0, y: 0, z: 200 } satisfies Vec3,
-}
-
-export const PLATE = {
-  x: 100,
-  y: 80,
-  z: 0,
-  w: 200,
-  d: 140,
-  h: 20,
-  holes: [
-    { id: "A", name: "孔A", x: 140, y: 110, z: 20, r: 10 },
-    { id: "B", name: "孔B", x: 260, y: 110, z: 20, r: 10 },
-    { id: "C", name: "孔C", x: 140, y: 190, z: 20, r: 10 },
-    { id: "D", name: "孔D", x: 260, y: 190, z: 20, r: 10 },
-  ],
+  zMax: 300,
+  home: { x: 0, y: 0, z: 300 } satisfies Vec3,
 }
 
 export function cloneVec(v: Vec3): Vec3 {
@@ -49,15 +35,10 @@ export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
 
-export function easeInOut(t: number): number {
-  const x = clamp(t, 0, 1)
-  return x * x * (3 - 2 * x)
-}
-
 export function uid(prefix: string): string {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`
 }
 
 export function formatMm(value: number, digits = 4): string {
-  return `${value.toFixed(digits)} mm`
+  return Number.isFinite(value) ? `${value.toFixed(digits)} mm` : "—"
 }

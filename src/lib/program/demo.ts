@@ -1,89 +1,121 @@
-import { PLATE } from "@/lib/geom"
-import type { GdtCheck, MeasurementProgram, ProgramStep } from "@/lib/program/types"
+import type { Vec3 } from "@/lib/geom"
+import { PLATE } from "@/lib/machine/setup"
+import type { GdtCheck, GdtType, MeasurementProgram, ProgramStep } from "@/lib/program/types"
 
-function planePoints(): ProgramStep {
-  const inset = 18
-  const z = PLATE.z + PLATE.h
-  const corners = [
-    { x: PLATE.x + inset, y: PLATE.y + inset, z },
-    { x: PLATE.x + PLATE.w - inset, y: PLATE.y + inset, z },
-    { x: PLATE.x + PLATE.w - inset, y: PLATE.y + PLATE.d - inset, z },
-    { x: PLATE.x + inset, y: PLATE.y + PLATE.d - inset, z },
-    { x: PLATE.x + PLATE.w / 2, y: PLATE.y + PLATE.d / 2, z },
-  ]
-  return {
-    id: "feat-plane",
-    kind: "plane",
-    name: "上平面",
-    points: corners.map((nominal, index) => ({ id: `feat-plane-pt-${index}`, nominal })),
-  }
-}
+/** 侧面触测高度：上表面以下 8 mm。 */
+const SIDE_Z = -8
+const HOLE_TOP_Z = -4
+const HOLE_BOTTOM_Z = -16
 
-function circlePoints(id: string, name: string, cx: number, cy: number, cz: number, r: number): ProgramStep {
-  const angles = [0, 90, 180, 270]
+export function circleStep(
+  id: string,
+  name: string,
+  center: Vec3,
+  radius: number,
+  inner = true,
+  count = 4
+): ProgramStep {
   return {
     id,
     kind: "circle",
     name,
-    nominalCenter: { x: cx, y: cy, z: cz },
-    nominalRadius: r,
-    points: angles.map((deg) => {
-      const rad = (deg * Math.PI) / 180
+    inner,
+    axis: { x: 0, y: 0, z: 1 },
+    nominalCenter: center,
+    nominalRadius: radius,
+    points: Array.from({ length: count }, (_, i) => {
+      const a = (i / count) * Math.PI * 2 + Math.PI / 4
+      const out = { x: Math.cos(a), y: Math.sin(a), z: 0 }
       return {
-        id: `${id}-pt-${deg}`,
-        nominal: {
-          x: cx + r * Math.cos(rad),
-          y: cy + r * Math.sin(rad),
-          z: cz,
-        },
+        id: `${id}-pt-${i}`,
+        nominal: { x: center.x + radius * out.x, y: center.y + radius * out.y, z: center.z },
+        approach: inner ? out : { x: -out.x, y: -out.y, z: 0 },
       }
     }),
   }
 }
 
 export function createDemoProgram(): MeasurementProgram {
-  const plane = planePoints()
-  const holes = PLATE.holes.map((hole) =>
-    circlePoints(`feat-hole-${hole.id}`, hole.name, hole.x, hole.y, hole.z, hole.r)
+  const top: ProgramStep = {
+    id: "feat-top",
+    kind: "plane",
+    name: "上表面",
+    points: [
+      { x: 15, y: 15 },
+      { x: 185, y: 15 },
+      { x: 185, y: 125 },
+      { x: 15, y: 125 },
+      { x: 100, y: 70 },
+    ].map((p, i) => ({
+      id: `feat-top-pt-${i}`,
+      nominal: { x: p.x, y: p.y, z: 0 },
+      approach: { x: 0, y: 0, z: -1 },
+    })),
+  }
+  const front: ProgramStep = {
+    id: "feat-front",
+    kind: "line",
+    name: "前侧基准边",
+    points: [25, 100, 175].map((x, i) => ({
+      id: `feat-front-pt-${i}`,
+      nominal: { x, y: 0, z: SIDE_Z },
+      approach: { x: 0, y: 1, z: 0 },
+    })),
+  }
+  const left: ProgramStep = {
+    id: "feat-left",
+    kind: "point",
+    name: "左侧基准点",
+    points: [{ id: "feat-left-pt-0", nominal: { x: 0, y: 70, z: SIDE_Z }, approach: { x: 1, y: 0, z: 0 } }],
+  }
+  const holes = PLATE.holes.map((h) =>
+    circleStep(`feat-hole-${h.id}`, h.name, { x: h.x, y: h.y, z: HOLE_TOP_Z }, h.r)
   )
-  const holeALower = circlePoints(
+  const holeALower = circleStep(
     "feat-hole-A-lower",
     "孔A下沿",
-    PLATE.holes[0].x,
-    PLATE.holes[0].y,
-    PLATE.z,
+    { x: PLATE.holes[0].x, y: PLATE.holes[0].y, z: HOLE_BOTTOM_Z },
     PLATE.holes[0].r
   )
-  const steps = [plane, ...holes, holeALower]
+
   const gdt: GdtCheck[] = [
-    { id: "gdt-flat", type: "flatness", name: "上平面平面度", featureIds: [plane.id], tolerance: 0.02 },
-    { id: "gdt-circ-a", type: "circularity", name: "孔A圆度", featureIds: [holes[0].id], tolerance: 0.015 },
-    ...holes.map((step, index) => ({
-      id: `gdt-pos-${PLATE.holes[index].id}`,
+    { id: "gdt-flat", type: "flatness", name: "上表面平面度", featureIds: [top.id], tolerance: 0.01 },
+    { id: "gdt-straight", type: "straightness", name: "前侧基准边直线度", featureIds: [front.id], tolerance: 0.01 },
+    { id: "gdt-circ-a", type: "circularity", name: "孔A圆度", featureIds: [holes[0].id], tolerance: 0.008 },
+    ...holes.map((step) => ({
+      id: `gdt-pos-${step.id}`,
       type: "position" as const,
       name: `${step.name}位置度`,
       featureIds: [step.id],
-      tolerance: 0.05,
+      tolerance: 0.03,
     })),
     {
       id: "gdt-coax-a",
       type: "coaxiality",
       name: "孔A上下同轴度",
-      featureIds: [holes[0].id, holeALower.id],
-      tolerance: 0.03,
+      featureIds: [holeALower.id],
+      datumIds: [holes[0].id],
+      tolerance: 0.02,
     },
   ]
+
   return {
-    id: "demo-plate",
-    name: "平板四孔示例",
-    steps,
+    id: "demo-bp01",
+    name: `${PLATE.name} 预检程序`,
+    steps: [top, front, left, ...holes, holeALower],
     gdt,
+    alignment: { primary: top.id, secondary: front.id, origin: left.id },
   }
 }
 
-export const GDT_LABEL: Record<GdtCheck["type"], string> = {
+export const GDT_LABEL: Record<GdtType, string> = {
   flatness: "平面度",
+  straightness: "直线度",
   circularity: "圆度",
   position: "位置度",
   coaxiality: "同轴度",
+  parallelism: "平行度",
+  perpendicularity: "垂直度",
 }
+
+export const KIND_LABEL = { point: "点", line: "直线", plane: "平面", circle: "圆", sphere: "球" } as const
