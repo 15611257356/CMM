@@ -1,156 +1,37 @@
 import type { Vec3 } from "@/lib/geom"
+import { cross, dot, normalize, norm, rejectFrom, sub } from "@/lib/math/linalg"
 
-export type PlaneFit = {
-  a: number
-  b: number
-  c: number
-  centroid: Vec3
-  residuals: number[]
-  flatness: number
+/**
+ * 形位公差评价。本模块统一按最小二乘基准评价，数值略大于或等于最小区域法结果；
+ * 需要严格按 GB/T 1958 最小区域法验收时，须另行实现并以标准件比对。
+ */
+
+function range(values: number[]): number {
+  return Math.max(...values) - Math.min(...values)
 }
 
-export type CircleFit = {
-  cx: number
-  cy: number
-  cz: number
-  radius: number
-  residuals: number[]
-  circularity: number
+/** 位置度（直径值）：在零件坐标系下，实测圆心与理论圆心在垂直于轴线平面内偏差的 2 倍。 */
+export function positionDiameter(measuredPart: Vec3, nominalPart: Vec3): number {
+  return 2 * Math.hypot(measuredPart.x - nominalPart.x, measuredPart.y - nominalPart.y)
 }
 
-function solve3(A: number[][], b: number[]): number[] | null {
-  const m = A.map((row, i) => [...row, b[i]])
-  for (let col = 0; col < 3; col++) {
-    let pivot = col
-    for (let row = col + 1; row < 3; row++) {
-      if (Math.abs(m[row][col]) > Math.abs(m[pivot][col])) pivot = row
-    }
-    if (Math.abs(m[pivot][col]) < 1e-12) return null
-    if (pivot !== col) {
-      const tmp = m[col]
-      m[col] = m[pivot]
-      m[pivot] = tmp
-    }
-    const div = m[col][col]
-    for (let j = col; j < 4; j++) m[col][j] /= div
-    for (let row = 0; row < 3; row++) {
-      if (row === col) continue
-      const f = m[row][col]
-      for (let j = col; j < 4; j++) m[row][j] -= f * m[col][j]
-    }
-  }
-  return [m[0][3], m[1][3], m[2][3]]
+/** 同轴度（直径值）：被测圆心到基准轴线的垂直距离的 2 倍。 */
+export function coaxiality(datumPoint: Vec3, datumAxis: Vec3, featureCenter: Vec3): number {
+  const axis = normalize(datumAxis)
+  return 2 * norm(cross(sub(featureCenter, datumPoint), axis))
 }
 
-/** 最小二乘平面 z = ax + by + c，平面度为最大/最小法向偏差之差。 */
-export function fitPlane(points: Vec3[]): PlaneFit {
-  if (points.length < 3) {
-    throw new Error("平面拟合至少需要 3 个点")
-  }
-  let sX = 0,
-    sY = 0,
-    sZ = 0,
-    sXX = 0,
-    sYY = 0,
-    sXY = 0,
-    sXZ = 0,
-    sYZ = 0
-  for (const p of points) {
-    sX += p.x
-    sY += p.y
-    sZ += p.z
-    sXX += p.x * p.x
-    sYY += p.y * p.y
-    sXY += p.x * p.y
-    sXZ += p.x * p.z
-    sYZ += p.y * p.z
-  }
-  const n = points.length
-  const coeff = solve3(
-    [
-      [sXX, sXY, sX],
-      [sXY, sYY, sY],
-      [sX, sY, n],
-    ],
-    [sXZ, sYZ, sZ]
-  )
-  if (!coeff) {
-    throw new Error("平面拟合失败：点几乎共线")
-  }
-  const [a, b, c] = coeff
-  const norm = Math.hypot(a, b, -1)
-  const residuals = points.map((p) => (a * p.x + b * p.y + c - p.z) / norm)
-  const flatness = Math.max(...residuals) - Math.min(...residuals)
-  return {
-    a,
-    b,
-    c,
-    centroid: { x: sX / n, y: sY / n, z: sZ / n },
-    residuals,
-    flatness,
-  }
+/** 平行度：被测面上各点沿基准法向的变动量。 */
+export function parallelism(surfacePoints: Vec3[], datumNormal: Vec3): number {
+  const n = normalize(datumNormal)
+  return range(surfacePoints.map((p) => dot(p, n)))
 }
 
-/** Kåsa 代数圆拟合，圆度为最大/最小半径差。 */
-export function fitCircle(points: Vec3[]): CircleFit {
-  if (points.length < 3) {
-    throw new Error("圆拟合至少需要 3 个点")
-  }
-  let sX = 0,
-    sY = 0,
-    sZ = 0,
-    sXX = 0,
-    sYY = 0,
-    sXY = 0,
-    sXz = 0,
-    sYz = 0
-  const zs: number[] = []
-  for (const p of points) {
-    const z = p.x * p.x + p.y * p.y
-    sX += p.x
-    sY += p.y
-    sZ += p.z
-    sXX += p.x * p.x
-    sYY += p.y * p.y
-    sXY += p.x * p.y
-    sXz += p.x * z
-    sYz += p.y * z
-    zs.push(z)
-  }
-  const n = points.length
-  const sZsum = zs.reduce((acc, v) => acc + v, 0)
-  const coeff = solve3(
-    [
-      [sXX, sXY, sX],
-      [sXY, sYY, sY],
-      [sX, sY, n],
-    ],
-    [sXz, sYz, sZsum]
-  )
-  if (!coeff) {
-    throw new Error("圆拟合失败：点几乎共线")
-  }
-  const [D, E, F] = [-coeff[0], -coeff[1], -coeff[2]]
-  const cx = -D / 2
-  const cy = -E / 2
-  const radius = Math.sqrt(Math.max(0, cx * cx + cy * cy - F))
-  const radii = points.map((p) => Math.hypot(p.x - cx, p.y - cy))
-  const residuals = radii.map((r) => r - radius)
-  const circularity = Math.max(...radii) - Math.min(...radii)
-  return {
-    cx,
-    cy,
-    cz: sZ / n,
-    radius,
-    residuals,
-    circularity,
-  }
-}
-
-export function positionDeviation(measured: { x: number; y: number }, nominal: { x: number; y: number }): number {
-  return 2 * Math.hypot(measured.x - nominal.x, measured.y - nominal.y)
-}
-
-export function coaxiality(a: { cx: number; cy: number }, b: { cx: number; cy: number }): number {
-  return 2 * Math.hypot(a.cx - b.cx, a.cy - b.cy)
+/**
+ * 垂直度：公差带为两个垂直于基准平面的平行平面，其方向取被测面法向在
+ * 基准平面内的投影。
+ */
+export function perpendicularity(surfacePoints: Vec3[], featureNormal: Vec3, datumNormal: Vec3): number {
+  const m = normalize(rejectFrom(featureNormal, normalize(datumNormal)))
+  return range(surfacePoints.map((p) => dot(p, m)))
 }
