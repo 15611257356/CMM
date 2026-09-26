@@ -34,6 +34,7 @@ function HeaderBar() {
   const loadNewPart = useCmmStore((s) => s.loadNewPart)
   const togglePause = useCmmStore((s) => s.togglePause)
   const triggerEstop = useCmmStore((s) => s.estop)
+  const inspectMode = useCmmStore((s) => s.inspectMode)
   const blocked = running || estop || !homed
 
   return (
@@ -63,7 +64,7 @@ function HeaderBar() {
         </Button>
         <Button size="sm" onClick={() => void runProgram()} disabled={blocked}>
           <Play data-icon="inline-start" />
-          运行预检
+          {inspectMode === "post" ? "运行复测" : "运行预调"}
         </Button>
         <Button size="sm" variant="outline" onClick={togglePause} disabled={!running}>
           {paused ? <Play data-icon="inline-start" /> : <Pause data-icon="inline-start" />}

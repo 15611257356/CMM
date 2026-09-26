@@ -1,6 +1,7 @@
 import type { Vec3 } from "@/lib/geom"
-import type { PalletOffsetResult } from "@/lib/coords/work-offset"
+import type { PalletOffsetResult, WorkOffsetValues } from "@/lib/coords/work-offset"
 import type { CircleFit, LineFit, PlaneFit, SphereFit } from "@/lib/measure/fit"
+import type { ThermalApplied } from "@/lib/measure/thermal"
 import type { PoseDeg, RigidTransform } from "@/lib/math/transform"
 
 export type FeatureKind = "point" | "line" | "plane" | "circle" | "sphere"
@@ -25,6 +26,8 @@ export type ProgramStep = {
   inner?: boolean
   /** 圆的名义轴线方向（零件坐标），默认 +Z。 */
   axis?: Vec3
+  /** 圆：直径公差（±mm）。未设置时不判尺寸。 */
+  sizeTolerance?: number
 }
 
 export type GdtType =
@@ -58,7 +61,8 @@ export type MeasurementProgram = {
   name: string
   steps: ProgramStep[]
   gdt: GdtCheck[]
-  alignment?: AlignmentDef
+  /** 三项都指定后才会做 3-2-1。 */
+  alignment?: Partial<AlignmentDef>
 }
 
 export type ProbeHit = {
@@ -85,9 +89,19 @@ export type FeatureResult = {
   point?: Vec3
   /** 补偿后的表面点（机床坐标），用于显示与形位公差。 */
   surfacePoints: Vec3[]
-  /** 零件坐标系下的圆心/点位置，建立坐标系后才有。 */
+  /** 零件坐标系下的圆心/点位置（已换算到 20 °C），建立坐标系后才有。 */
   inPart?: Vec3
+  /** 直径（已换算到 20 °C）。 */
   diameter?: number
+  sizeCheck?: SizeCheck
+}
+
+export type SizeCheck = {
+  nominal: number
+  actual: number
+  deviation: number
+  tolerance: number
+  passed: boolean
 }
 
 export type GdtResult = {
@@ -107,9 +121,16 @@ export type Evaluation = {
   partToMachine: RigidTransform
   pallet: PalletOffsetResult
   tipRadius: number
+  thermal: ThermalApplied | null
 }
 
+/** preset：加工前预调（出装夹偏差、工件坐标系、改写程序）；post：加工后回机复测尺寸与形位公差。 */
+export type InspectMode = "preset" | "post"
+
 export type ReportSnapshot = {
+  mode: InspectMode
+  reportNo: string
+  partSerial: string
   createdAt: string
   programName: string
   features: FeatureResult[]
@@ -120,6 +141,9 @@ export type ReportSnapshot = {
   tiltWarning: string | null
   tipRadius: number
   calibrated: boolean
+  thermal: ThermalApplied | null
+  /** 预调时写入的工件坐标系。 */
+  workOffset?: WorkOffsetValues
 }
 
 export type LogLevel = "info" | "warn" | "error"

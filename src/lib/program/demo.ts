@@ -13,7 +13,8 @@ export function circleStep(
   center: Vec3,
   radius: number,
   inner = true,
-  count = 4
+  count = 4,
+  sizeTolerance?: number
 ): ProgramStep {
   return {
     id,
@@ -23,6 +24,7 @@ export function circleStep(
     axis: { x: 0, y: 0, z: 1 },
     nominalCenter: center,
     nominalRadius: radius,
+    sizeTolerance,
     points: Array.from({ length: count }, (_, i) => {
       const a = (i / count) * Math.PI * 2 + Math.PI / 4
       const out = { x: Math.cos(a), y: Math.sin(a), z: 0 }
@@ -105,6 +107,35 @@ export function createDemoProgram(): MeasurementProgram {
     steps: [top, front, left, ...holes, holeALower],
     gdt,
     alignment: { primary: top.id, secondary: front.id, origin: left.id },
+  }
+}
+
+/** 加工前：只找基准，用来出装夹偏差和工件坐标系。 */
+export function createPresetProgram(): MeasurementProgram {
+  const full = createDemoProgram()
+  const keep = new Set(["feat-top", "feat-front", "feat-left"])
+  return {
+    ...full,
+    id: "preset-bp01",
+    name: `${PLATE.name} 预调`,
+    steps: full.steps.filter((step) => keep.has(step.id)),
+    gdt: full.gdt.filter(
+      (check) =>
+        check.featureIds.every((id) => keep.has(id)) && (check.datumIds ?? []).every((id) => keep.has(id))
+    ),
+  }
+}
+
+/** 加工后回机：在同一套基准上复测孔径、位置和形位公差。尺寸按 20 °C 图纸。 */
+export function createPostProgram(): MeasurementProgram {
+  const full = createDemoProgram()
+  return {
+    ...full,
+    id: "post-bp01",
+    name: `${PLATE.name} 加工后复测`,
+    steps: full.steps.map((step) =>
+      step.kind === "circle" && step.nominalRadius !== undefined ? { ...step, sizeTolerance: 0.03 } : step
+    ),
   }
 }
 

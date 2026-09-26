@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { workOffsetFromPose, workOffsetNc } from "@/lib/coords/work-offset"
 import { PLATE } from "@/lib/machine/setup"
-import { applyPoint, type RigidTransform } from "@/lib/math/transform"
+import { applyPoint, compose, fromPoseDeg, type RigidTransform } from "@/lib/math/transform"
+import { applyDialYaw } from "@/lib/program/indicator"
 import { checkTravel, SAMPLE_NC, transformNcProgram, type ToolpathPoint } from "@/lib/nc/transform"
 import { useCmmStore, type NcMode } from "@/lib/store"
 import { Download, FileUp } from "lucide-react"
@@ -54,15 +55,21 @@ export function NcPanel() {
   const mode = useCmmStore((s) => s.ncMode)
   const setMode = useCmmStore((s) => s.setNcMode)
   const withRotation = useCmmStore((s) => s.withRotation)
+  const dialResult = useCmmStore((s) => s.dialResult)
+  const useDialYaw = useCmmStore((s) => s.useDialYaw)
   const log = useCmmStore((s) => s.log)
   const [confirmedFor, setConfirmedFor] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const source = stored ?? SAMPLE_NC
 
-  const result = useMemo(
-    () => (evaluation ? transformNcProgram(source, evaluation.pallet.deltaInNominalPart) : null),
-    [evaluation, source]
-  )
+  const delta = useMemo(() => {
+    if (!evaluation) return null
+    const base = evaluation.pallet.deltaInNominalPart
+    if (!useDialYaw || !dialResult) return base
+    return compose(base, fromPoseDeg({ x: 0, y: 0, z: 0, rz: dialResult.angleDeg, ry: 0, rx: 0 }))
+  }, [evaluation, useDialYaw, dialResult])
+
+  const result = useMemo(() => (delta ? transformNcProgram(source, delta) : null), [delta, source])
 
   if (!evaluation || !result) {
     return (
@@ -76,7 +83,10 @@ export function NcPanel() {
   }
 
   const nominalOffset = workOffsetFromPose(evaluation.pallet.nominal, machineTool)
-  const actualOffset = workOffsetFromPose(evaluation.pallet.actual, machineTool)
+  const actualOffset = workOffsetFromPose(
+    applyDialYaw(evaluation.pallet.actual, dialResult, useDialYaw),
+    machineTool
+  )
   const travelIssues = checkTravel(result.bounds, nominalOffset, machineTool.travel)
   const output =
     mode === "offset"

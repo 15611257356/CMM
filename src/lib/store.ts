@@ -1,6 +1,6 @@
 "use client"
 
-import type { MachineToolConfig } from "@/lib/coords/work-offset"
+import { workOffsetFromPose, type MachineToolConfig } from "@/lib/coords/work-offset"
 import { uid, type Axis } from "@/lib/geom"
 import {
   DEFAULT_MACHINE_TOOL,
@@ -13,7 +13,9 @@ import { applyPoint, invert, type RigidTransform } from "@/lib/math/transform"
 import { HardwareMotionController } from "@/lib/motion/hardware-stub"
 import { SimulatedMotionController } from "@/lib/motion/simulated-controller"
 import { MotionError, type MotionSnapshot } from "@/lib/motion/types"
-import { circleStep, createDemoProgram } from "@/lib/program/demo"
+import { circleStep, createDemoProgram, createPostProgram, createPresetProgram } from "@/lib/program/demo"
+import { renameProgram, renameStep, setAlignmentRole, setCircleSpec, setGdtTolerance, setPointCount } from "@/lib/program/edit"
+import { applyDialYaw, indicateEdge, type IndicatorReading, type IndicatorResult } from "@/lib/program/indicator"
 import {
   calibrateFromSphere,
   evaluateProgram,
@@ -21,9 +23,12 @@ import {
   type PalletCalibration,
 } from "@/lib/program/evaluate"
 import { executeProgram, touchSequence, type ProbeDriver, type RunOptions } from "@/lib/program/runner"
+import { appliedThermal, DEFAULT_THERMAL, type ThermalSettings } from "@/lib/measure/thermal"
 import type {
+  AlignmentDef,
   Evaluation,
   GdtCheck,
+  InspectMode,
   LogEntry,
   LogLevel,
   MeasurementProgram,
@@ -42,6 +47,14 @@ const PROGRAM_KEY = "yujian-program-v2"
 const REPORT_KEY = "yujian-report-v2"
 const CALIBRATION_KEY = "yujian-calibration-v1"
 const MACHINE_TOOL_KEY = "yujian-machine-tool-v1"
+const PREFS_KEY = "yujian-prefs-v1"
+
+type Prefs = {
+  inspectMode: InspectMode
+  partSerial: string
+  thermal: ThermalSettings
+  useDialYaw: boolean
+}
 
 /** program / motion 只在窄屏布局作为独立页签出现。 */
 export type CenterView = "machine" | "vision" | "coords" | "nc" | "report" | "program" | "motion"
@@ -94,6 +107,13 @@ type AppState = {
   ncSource: string | null
   ncMode: NcMode
   withRotation: boolean
+  inspectMode: InspectMode
+  partSerial: string
+  thermal: ThermalSettings
+  dialReadings: IndicatorReading[]
+  dialResult: IndicatorResult | null
+  dialInputMm: number
+  useDialYaw: boolean
   visionImage: string | null
   visionSize: { w: number; h: number } | null
   visionDetections: DetectedCircle[]
@@ -107,6 +127,20 @@ type AppState = {
   setSelectedStep: (id: string | null) => void
   setJogSpeed: (speed: number) => void
   resetDemoProgram: () => void
+  loadTemplate: (which: "preset" | "post" | "demo") => void
+  renameCurrentProgram: (name: string) => void
+  renameSelectedStep: (name: string) => void
+  setStepPointCount: (id: string, count: number) => void
+  setStepCircle: (id: string, spec: { diameter?: number; sizeTolerance?: number | null }) => void
+  setAlignment: (role: keyof AlignmentDef, stepId: string | null) => void
+  setTolerance: (checkId: string, tolerance: number) => void
+  setInspectMode: (mode: InspectMode) => void
+  setPartSerial: (serial: string) => void
+  setThermal: (patch: Partial<ThermalSettings>) => void
+  setDialInput: (mm: number) => void
+  recordDial: () => void
+  clearDial: () => void
+  setUseDialYaw: (value: boolean) => void
   addStep: (kind: ProgramStep["kind"]) => void
   removeStep: (id: string) => void
   startJog: (axis: Axis, direction: 1 | -1) => void
@@ -230,6 +264,13 @@ export const useCmmStore = create<AppState>((set, get) => {
     ncSource: null,
     ncMode: "offset",
     withRotation: true,
+    inspectMode: "preset",
+    partSerial: "",
+    thermal: DEFAULT_THERMAL,
+    dialReadings: [],
+    dialResult: null,
+    dialInputMm: 0,
+    useDialYaw: false,
     visionImage: null,
     visionSize: null,
     visionDetections: [],
@@ -242,11 +283,25 @@ export const useCmmStore = create<AppState>((set, get) => {
       const report = readJson<ReportSnapshot>(REPORT_KEY)
       const calibration = readJson<PalletCalibration>(CALIBRATION_KEY)
       const machineTool = readJson<MachineToolConfig>(MACHINE_TOOL_KEY)
+      const prefs = readJson<Partial<Prefs>>(PREFS_KEY)
+      const normalized = report
+        ? {
+            ...report,
+            mode: report.mode ?? "preset",
+            reportNo: report.reportNo ?? "",
+            partSerial: report.partSerial ?? "",
+            thermal: report.thermal ?? null,
+          }
+        : null
       set({
         ...(program?.steps?.length ? { program } : {}),
-        ...(report ? { report } : {}),
+        ...(normalized ? { report: normalized } : {}),
         ...(calibration ? { calibration } : {}),
         ...(machineTool ? { machineTool: { ...DEFAULT_MACHINE_TOOL, ...machineTool } } : {}),
+        ...(prefs?.inspectMode ? { inspectMode: prefs.inspectMode } : {}),
+        ...(prefs?.partSerial !== undefined ? { partSerial: prefs.partSerial } : {}),
+        ...(prefs?.thermal ? { thermal: { ...DEFAULT_THERMAL, ...prefs.thermal } } : {}),
+        ...(prefs?.useDialYaw !== undefined ? { useDialYaw: prefs.useDialYaw } : {}),
       })
     },
 
@@ -258,11 +313,127 @@ export const useCmmStore = create<AppState>((set, get) => {
     setSelectedStep: (id) => set({ selectedStepId: id }),
     setJogSpeed: (speed) => set({ jogSpeed: speed }),
 
-    resetDemoProgram: () => {
-      const program = createDemoProgram()
+    resetDemoProgram: () => get().loadTemplate("demo"),
+
+    loadTemplate: (which) => {
+      const program =
+        which === "preset" ? createPresetProgram() : which === "post" ? createPostProgram() : createDemoProgram()
+      const inspectMode: InspectMode = which === "demo" ? get().inspectMode : which
       writeJson(PROGRAM_KEY, program)
-      set({ program, hits: [], evaluation: null, selectedStepId: null, currentStepId: null })
-      get().log("info", `已恢复「${program.name}」`)
+      const prefs: Prefs = {
+        inspectMode,
+        partSerial: get().partSerial,
+        thermal: get().thermal,
+        useDialYaw: get().useDialYaw,
+      }
+      writeJson(PREFS_KEY, prefs)
+      set({ program, inspectMode, hits: [], evaluation: null, selectedStepId: null, currentStepId: null })
+      get().log("info", `已载入「${program.name}」`)
+    },
+
+    renameCurrentProgram: (name) => {
+      const program = renameProgram(get().program, name)
+      writeJson(PROGRAM_KEY, program)
+      set({ program })
+    },
+
+    renameSelectedStep: (name) => {
+      const id = get().selectedStepId
+      if (!id) return
+      const program = renameStep(get().program, id, name)
+      writeJson(PROGRAM_KEY, program)
+      set({ program })
+    },
+
+    setStepPointCount: (id, count) => {
+      const program = setPointCount(get().program, id, count)
+      writeJson(PROGRAM_KEY, program)
+      set({ program })
+    },
+
+    setStepCircle: (id, spec) => {
+      const program = setCircleSpec(get().program, id, spec)
+      writeJson(PROGRAM_KEY, program)
+      set({ program })
+    },
+
+    setAlignment: (role, stepId) => {
+      const result = setAlignmentRole(get().program, role, stepId)
+      writeJson(PROGRAM_KEY, result.program)
+      set({ program: result.program })
+      if (result.error) get().log("warn", result.error)
+      else if (result.program.alignment) get().log("info", "3-2-1 找正基准已更新")
+    },
+
+    setTolerance: (checkId, tolerance) => {
+      const program = setGdtTolerance(get().program, checkId, tolerance)
+      writeJson(PROGRAM_KEY, program)
+      set({ program })
+    },
+
+    setInspectMode: (inspectMode) => {
+      const prefs: Prefs = {
+        inspectMode,
+        partSerial: get().partSerial,
+        thermal: get().thermal,
+        useDialYaw: get().useDialYaw,
+      }
+      writeJson(PREFS_KEY, prefs)
+      set({ inspectMode })
+    },
+
+    setPartSerial: (partSerial) => {
+      writeJson(PREFS_KEY, {
+        inspectMode: get().inspectMode,
+        partSerial,
+        thermal: get().thermal,
+        useDialYaw: get().useDialYaw,
+      } satisfies Prefs)
+      set({ partSerial })
+    },
+
+    setThermal: (patch) => {
+      const thermal = { ...get().thermal, ...patch }
+      if (patch.material) thermal.material = patch.material
+      writeJson(PREFS_KEY, {
+        inspectMode: get().inspectMode,
+        partSerial: get().partSerial,
+        thermal,
+        useDialYaw: get().useDialYaw,
+      } satisfies Prefs)
+      set({ thermal })
+    },
+
+    setDialInput: (dialInputMm) => set({ dialInputMm }),
+
+    recordDial: () => {
+      const readings = [
+        ...get().dialReadings,
+        { position: { ...get().motion.position }, readingMm: get().dialInputMm },
+      ]
+      const dialResult = indicateEdge(readings)
+      set({ dialReadings: readings, dialResult })
+      if (!dialResult) get().log("warn", readings.length < 2 ? "再记一个点才能算转角" : "行程不足 5 mm，继续沿边移动后再记")
+      else
+        get().log(
+          "info",
+          `千分表：沿 ${dialResult.travel.toUpperCase()} ${dialResult.spanMm.toFixed(1)} mm，转角 ${dialResult.angleDeg.toFixed(4)}°，直线变动 ${(dialResult.variationMm * 1000).toFixed(1)} μm`
+        )
+    },
+
+    clearDial: () => {
+      set({ dialReadings: [], dialResult: null })
+      get().log("info", "已清除千分表读数")
+    },
+
+    setUseDialYaw: (useDialYaw) => {
+      writeJson(PREFS_KEY, {
+        inspectMode: get().inspectMode,
+        partSerial: get().partSerial,
+        thermal: get().thermal,
+        useDialYaw,
+      } satisfies Prefs)
+      set({ useDialYaw })
     },
 
     addStep: (kind) => {
@@ -413,7 +584,8 @@ export const useCmmStore = create<AppState>((set, get) => {
         get().log("warn", "程序为空，请先加载示例或添加特征")
         return
       }
-      if (!beginRun("测量")) return
+      const inspectMode = get().inspectMode
+      if (!beginRun(inspectMode === "post" ? "复测" : "预调")) return
       if (!get().calibration) get().log("warn", "托盘零点和测针未标定，按设计值计算，精度不可信")
       const placement = placementOf(get())
       const clearanceZ = applyPoint(placement, { x: 0, y: 0, z: 0 }).z + PROBE.clearanceAbovePart
@@ -436,13 +608,19 @@ export const useCmmStore = create<AppState>((set, get) => {
           const name = program.steps.find((st) => st.id === h.stepId)?.name ?? h.stepId
           get().log("warn", `${name}：${h.error}，该特征跳过`)
         })
+        const thermal = appliedThermal(get().thermal)
         const evaluation = evaluateProgram(program, hits, {
           tipRadius: tipRadiusOf(get()),
           palletToMachine: palletToMachineOf(get()),
           nominalPartToPallet: NOMINAL_PART_ON_PALLET,
           placement,
+          thermal,
         })
+        const pose = applyDialYaw(evaluation.pallet.actual, get().dialResult, get().useDialYaw)
         const report: ReportSnapshot = {
+          mode: inspectMode,
+          reportNo: `YJ-${inspectMode === "post" ? "R" : "P"}-${Date.now().toString(36).toUpperCase()}`,
+          partSerial: get().partSerial,
           createdAt: nowIso(),
           programName: program.name,
           features: evaluation.features,
@@ -453,6 +631,8 @@ export const useCmmStore = create<AppState>((set, get) => {
           tiltWarning: evaluation.pallet.tiltWarning,
           tipRadius: evaluation.tipRadius,
           calibrated: Boolean(get().calibration),
+          thermal,
+          workOffset: workOffsetFromPose(pose, get().machineTool),
         }
         writeJson(REPORT_KEY, report)
         set({ hits, evaluation, report })

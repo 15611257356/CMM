@@ -2,6 +2,7 @@
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { formatMm, type Axis } from "@/lib/geom"
@@ -13,7 +14,7 @@ import {
   useCmmStore,
   type DroFrame,
 } from "@/lib/store"
-import { Home, RotateCcw } from "lucide-react"
+import { Home, RotateCcw, Ruler } from "lucide-react"
 
 function AxisReadout({ axis, value }: { axis: Axis; value: number }) {
   const color = axis === "x" ? "text-red-500" : axis === "y" ? "text-lime-600 dark:text-lime-400" : "text-sky-500"
@@ -46,6 +47,12 @@ export function MotionPanel() {
   const resetEstop = useCmmStore((s) => s.resetEstop)
   const running = useCmmStore((s) => s.running)
   const logs = useCmmStore((s) => s.logs)
+  const dialReadings = useCmmStore((s) => s.dialReadings)
+  const dialResult = useCmmStore((s) => s.dialResult)
+  const dialInputMm = useCmmStore((s) => s.dialInputMm)
+  const setDialInput = useCmmStore((s) => s.setDialInput)
+  const recordDial = useCmmStore((s) => s.recordDial)
+  const clearDial = useCmmStore((s) => s.clearDial)
   const hw = hardwareMotion.getSnapshot()
 
   const frame =
@@ -137,6 +144,44 @@ export function MotionPanel() {
             复位急停
           </Button>
         </div>
+      </div>
+
+      <div className="border-t px-3 py-2">
+        <div className="mb-1.5 flex items-center justify-between">
+          <p className="text-[11px] text-muted-foreground">千分表找正</p>
+          <span className="text-[10px] text-muted-foreground">{dialReadings.length} 点</span>
+        </div>
+        <p className="mb-2 text-[10px] leading-snug text-muted-foreground">
+          表针靠上基准边，沿这条边点动，每停一处记下表的读数。行程超过 5 mm 后给出绕 Z 的转角。
+        </p>
+        <div className="flex items-end gap-1.5">
+          <label className="flex min-w-0 flex-1 flex-col gap-1">
+            <Label htmlFor="dial-reading" className="text-[11px] text-muted-foreground">
+              当前读数 mm
+            </Label>
+            <Input
+              id="dial-reading"
+              type="number"
+              step="0.001"
+              value={dialInputMm}
+              onChange={(e) => setDialInput(Number(e.target.value) || 0)}
+              className="h-7 font-mono text-xs"
+            />
+          </label>
+          <Button size="sm" variant="outline" disabled={disabled} onClick={recordDial}>
+            <Ruler data-icon="inline-start" />
+            记录
+          </Button>
+          <Button size="sm" variant="ghost" disabled={dialReadings.length === 0} onClick={clearDial}>
+            清除
+          </Button>
+        </div>
+        {dialResult ? (
+          <p className="mt-1.5 font-mono text-[11px]">
+            沿 {dialResult.travel.toUpperCase()} {dialResult.spanMm.toFixed(1)} mm · 转角 {dialResult.angleDeg.toFixed(4)}° · 变动{" "}
+            {(dialResult.variationMm * 1000).toFixed(1)} μm
+          </p>
+        ) : null}
       </div>
 
       <div className="min-h-0 flex-1 border-t">

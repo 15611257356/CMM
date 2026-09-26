@@ -48,11 +48,18 @@ export function ReportView() {
       </div>
       <div className="report-sheet min-h-0 flex-1 overflow-auto bg-background px-5 py-4">
         <header className="mb-4 border-b pb-3">
-          <p className="text-xs tracking-[0.2em] text-muted-foreground">预检报告</p>
+          <p className="text-xs tracking-[0.2em] text-muted-foreground">
+            {report.mode === "post" ? "加工后复测报告" : "预调报告"} · 过程检查
+          </p>
           <h1 className="text-xl font-semibold">{report.programName}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {when} · 测针有效半径 {report.tipRadius.toFixed(4)} mm{report.calibrated ? "" : "（未标定，名义值）"} ·{" "}
-            {failed === 0 ? "全部公差合格" : `${failed} 项超差或无法评价`}
+            {report.reportNo ? `${report.reportNo} · ` : ""}
+            {report.partSerial ? `零件 ${report.partSerial} · ` : ""}
+            {when} · 测针有效半径 {report.tipRadius.toFixed(4)} mm{report.calibrated ? "" : "（未标定，名义值）"}
+            {report.thermal?.enabled
+              ? ` · ${report.thermal.partTempC.toFixed(1)} °C 已换算到 20 °C`
+              : ""}
+            {report.mode === "post" ? ` · ${failed === 0 ? "全部公差合格" : `${failed} 项超差或无法评价`}` : ""}
           </p>
         </header>
 
@@ -81,7 +88,12 @@ export function ReportView() {
                 <tr key={f.stepId} className="border-b border-border/60">
                   <td className="py-1.5">{f.name}</td>
                   <td className="py-1.5 text-muted-foreground">{KIND_LABEL[f.kind]}</td>
-                  <td className={`py-1.5 font-mono text-xs ${f.ok ? "" : "text-destructive"}`}>{featureText(f)}</td>
+                  <td className={`py-1.5 font-mono text-xs ${f.ok ? "" : "text-destructive"}`}>
+                    {featureText(f)}
+                    {f.sizeCheck
+                      ? ` · ${f.sizeCheck.passed ? "尺寸合格" : "尺寸超差"} Δ${f.sizeCheck.deviation.toFixed(4)}（±${f.sizeCheck.tolerance.toFixed(3)}）`
+                      : ""}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -117,7 +129,10 @@ export function ReportView() {
         </section>
 
         <p className="mt-6 text-xs text-muted-foreground">
-          本报告来自软件仿真。预检机不能替代经鉴定合格的三坐标测量机，零件的最终检测报告须由标准三坐标出具。
+          本报告是预检过程检查，不能代替经鉴定合格的三坐标测量机出具的检测证书。
+          {report.workOffset
+            ? ` 工件坐标系 ${report.workOffset.register}：X ${report.workOffset.x.toFixed(4)} Y ${report.workOffset.y.toFixed(4)} Z ${report.workOffset.z.toFixed(4)}，绕 Z ${report.workOffset.rotationDeg.toFixed(4)}°。`
+            : ""}
           运动控制与安全逻辑须由工程师终审后才能上机。
         </p>
       </div>

@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { WORK_OFFSETS, workOffsetFromPose, workOffsetNc, type WorkOffsetCode } from "@/lib/coords/work-offset"
+import { applyDialYaw } from "@/lib/program/indicator"
+import { MATERIALS, appliedThermal, type MaterialKey } from "@/lib/measure/thermal"
 import { NOMINAL_PART_ON_PALLET, PALLET } from "@/lib/machine/setup"
 import { toPoseDeg, type PoseDeg } from "@/lib/math/transform"
 import { useCmmStore } from "@/lib/store"
@@ -103,9 +105,18 @@ export function CoordsPanel() {
   const running = useCmmStore((s) => s.running)
   const homed = useCmmStore((s) => s.motion.homed)
   const log = useCmmStore((s) => s.log)
+  const thermal = useCmmStore((s) => s.thermal)
+  const setThermal = useCmmStore((s) => s.setThermal)
+  const dialResult = useCmmStore((s) => s.dialResult)
+  const useDialYaw = useCmmStore((s) => s.useDialYaw)
+  const setUseDialYaw = useCmmStore((s) => s.setUseDialYaw)
+  const partSerial = useCmmStore((s) => s.partSerial)
+  const setPartSerial = useCmmStore((s) => s.setPartSerial)
 
   const nominal = toPoseDeg(NOMINAL_PART_ON_PALLET)
-  const offset = evaluation ? workOffsetFromPose(evaluation.pallet.actual, machineTool) : null
+  const pose = evaluation ? applyDialYaw(evaluation.pallet.actual, dialResult, useDialYaw) : null
+  const offset = pose ? workOffsetFromPose(pose, machineTool) : null
+  const heat = appliedThermal(thermal)
   const ncText = offset ? workOffsetNc(offset, withRotation) : ""
   const truthDelta: PoseDeg = {
     x: truth.partPose.x - nominal.x,
@@ -145,6 +156,51 @@ export function CoordsPanel() {
             <Crosshair data-icon="inline-start" />
             {homed ? "标定托盘零点 / 测针" : "请先回零"}
           </Button>
+        </Section>
+
+        <Section title="温度补偿" badge={<Badge variant="outline">{heat.enabled ? `${heat.partTempC.toFixed(1)} °C` : "关闭"}</Badge>}>
+          <p className="mb-2 text-xs text-muted-foreground">
+            尺寸和位置按 20 °C 图纸换算。零件绕自身原点按线膨胀系数伸缩，光栅尺补偿不在这里做。
+          </p>
+          <div className="mb-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <label className="flex items-center gap-2 text-xs sm:col-span-1">
+              <input type="checkbox" checked={thermal.enabled} onChange={(e) => setThermal({ enabled: e.target.checked })} />
+              启用
+            </label>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="mat" className="text-[11px] text-muted-foreground">
+                材料
+              </Label>
+              <select
+                id="mat"
+                value={thermal.material}
+                onChange={(e) => setThermal({ material: e.target.value as MaterialKey })}
+                className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm dark:bg-input/30"
+              >
+                {(Object.keys(MATERIALS) as MaterialKey[]).map((key) => (
+                  <option key={key} value={key}>
+                    {MATERIALS[key].label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <NumberField
+              id="part-temp"
+              label="零件温度 °C"
+              value={thermal.partTempC}
+              onChange={(partTempC) => setThermal({ partTempC })}
+            />
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="serial" className="text-[11px] text-muted-foreground">
+                零件编号
+              </Label>
+              <Input id="serial" value={partSerial} onChange={(e) => setPartSerial(e.target.value)} className="font-mono" />
+            </div>
+          </div>
+          <p className="font-mono text-xs text-muted-foreground">
+            线膨胀 {(heat.alpha * 1e6).toFixed(1)} μm/m·°C · 缩放 {heat.scale.toFixed(6)}
+            {heat.scale === 1 ? "（与 20 °C 相同）" : ""}
+          </p>
         </Section>
 
         <Section
@@ -240,6 +296,17 @@ export function CoordsPanel() {
                   <dd className="font-mono">{offset.rotationDeg.toFixed(5)}°</dd>
                 </div>
               </dl>
+              <label className="mb-2 flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={useDialYaw}
+                  disabled={!dialResult}
+                  onChange={(e) => setUseDialYaw(e.target.checked)}
+                />
+                把千分表转角加进绕 Z
+                {dialResult ? `（${dialResult.angleDeg.toFixed(4)}°）` : "（先在运动面板记录读数）"}
+                。已经用测头做过 3-2-1 时不要勾选。
+              </label>
               <label className="mb-2 flex items-center gap-2 text-xs">
                 <input type="checkbox" checked={withRotation} onChange={(e) => setWithRotation(e.target.checked)} />
                 输出 G68 坐标旋转（机床需支持 G68；不支持时请改用「加工程序」页的改写模式）

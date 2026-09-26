@@ -1,6 +1,7 @@
 import type { Vec3 } from "@/lib/geom"
 import { PALLET, PLATE } from "@/lib/machine/setup"
 import { add, scale } from "@/lib/math/linalg"
+import { MATERIALS, REFERENCE_TEMP_C, thermalScale } from "@/lib/measure/thermal"
 import { applyPoint, compose, fromPoseDeg, invert, type PoseDeg, type RigidTransform } from "@/lib/math/transform"
 
 /**
@@ -20,6 +21,13 @@ export type SimTruth = {
   tipRadius: number
   /** 单点重复性噪声（mm，均匀分布半宽）。 */
   noise: number
+  /** 零件实际温度与线膨胀系数，零件绕自身原点等比伸缩。 */
+  partTempC: number
+  partAlpha: number
+}
+
+export function partThermalScale(truth: SimTruth): number {
+  return thermalScale(truth.partAlpha, truth.partTempC)
 }
 
 function boxSdf(p: Vec3, min: Vec3, max: Vec3): number {
@@ -56,6 +64,8 @@ export function createTruth(random: () => number = Math.random): SimTruth {
     })),
     tipRadius: 1.9987,
     noise: 0.0004,
+    partTempC: REFERENCE_TEMP_C,
+    partAlpha: MATERIALS.steel.alpha,
   }
 }
 
@@ -80,11 +90,12 @@ export function sceneSdf(truth: SimTruth, p: Vec3): number {
   const stemTop = s.center.z - s.radius * 0.8
   const stem = Math.max(Math.hypot(pl.x - s.center.x, pl.y - s.center.y) - s.stemRadius, pl.z - stemTop, -pl.z)
 
-  const pp = applyPoint(invert(truth.partToPallet), pl)
+  const k = partThermalScale(truth)
+  const pp = scale(applyPoint(invert(truth.partToPallet), pl), 1 / k)
   let part = boxSdf(pp, { x: 0, y: 0, z: -PLATE.h }, { x: PLATE.w, y: PLATE.d, z: 0 })
   for (const h of truth.holes) part = Math.max(part, h.r - Math.hypot(pp.x - h.x, pp.y - h.y))
 
-  return Math.min(table, pallet, sphere, stem, part)
+  return Math.min(table, pallet, sphere, stem, part * k)
 }
 
 export type TouchResult = { kind: "hit"; center: Vec3 } | { kind: "miss" } | { kind: "collision" }

@@ -3,7 +3,8 @@ import { workOffsetFromPose } from "@/lib/coords/work-offset"
 import { DEFAULT_MACHINE_TOOL, NOMINAL_PART_ON_PALLET, PALLET, PLATE, PROBE, nominalPartToMachine } from "@/lib/machine/setup"
 import { applyPoint, compose, toPoseDeg } from "@/lib/math/transform"
 import { transformNcProgram } from "@/lib/nc/transform"
-import { createDemoProgram } from "@/lib/program/demo"
+import { createDemoProgram, createPostProgram } from "@/lib/program/demo"
+import { appliedThermal } from "@/lib/measure/thermal"
 import { calibrateFromSphere, evaluateProgram, sphereTouchTargets } from "@/lib/program/evaluate"
 import { executeProgram, touchSequence, type ProbeDriver, type RunOptions } from "@/lib/program/runner"
 import { createTruth, segmentClearance, simulateTouch, type SimTruth } from "@/lib/sim/world"
@@ -124,6 +125,30 @@ describe("预检闭环（仿真）", () => {
       expect(toPoseDeg(evaluation.pallet.deltaInNominalPart).rz).toBeCloseTo(want.rz, 2)
     })
   }
+
+  it("零件升温后，孔径补偿回 20 °C 图纸尺寸", async () => {
+    const random = seeded(11)
+    const truth = createTruth(random)
+    truth.noise = 0
+    truth.partTempC = 40
+    truth.partAlpha = 23e-6
+    const driver = instantDriver(truth, () => 0.5)
+    const placement = nominalPartToMachine(truth.palletToMachine)
+    const program = createPostProgram()
+    const clearanceZ = applyPoint(placement, { x: 0, y: 0, z: 0 }).z + PROBE.clearanceAbovePart
+    const hits = await executeProgram(program, driver, options(truth, placement, truth.tipRadius, clearanceZ))
+    const thermal = appliedThermal({ enabled: true, material: "aluminum", partTempC: 40 })
+    const evaluation = evaluateProgram(program, hits, {
+      tipRadius: truth.tipRadius,
+      palletToMachine: truth.palletToMachine,
+      nominalPartToPallet: NOMINAL_PART_ON_PALLET,
+      placement,
+      thermal,
+    })
+    const holeA = evaluation.features.find((f) => f.stepId === "feat-hole-A")!
+    expect(holeA.sizeCheck?.passed).toBe(true)
+    expect(Math.abs(holeA.diameter! / 2 - truth.holes[0].r)).toBeLessThan(0.002)
+  })
 
   it("路径与工件干涉时拒绝运动", async () => {
     const truth = createTruth(seeded(3))

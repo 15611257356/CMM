@@ -4,6 +4,7 @@ import { palletOffset } from "@/lib/coords/work-offset"
 import { fitCircle, fitLine, fitPlane, fitSphere, probeCompensation } from "@/lib/measure/fit"
 import { coaxiality, parallelism, perpendicularity, positionDiameter } from "@/lib/measure/gdt"
 import { add, normalize, scale, sub } from "@/lib/math/linalg"
+import type { ThermalApplied } from "@/lib/measure/thermal"
 import { applyDir, applyPoint, invert, type RigidTransform } from "@/lib/math/transform"
 import type {
   Evaluation,
@@ -20,6 +21,8 @@ export type EvalContext = {
   nominalPartToPallet: RigidTransform
   /** 名义装夹（零件 → 机床），未建立零件坐标系时按它评价。 */
   placement: RigidTransform
+  /** 把实测尺寸换算回 20 °C。不传则不补偿。 */
+  thermal?: ThermalApplied | null
 }
 
 const MIN_POINTS = { point: 1, line: 2, plane: 3, circle: 3, sphere: 4 } as const
@@ -79,7 +82,7 @@ export function evaluateProgram(program: MeasurementProgram, hits: StepHits[], c
   let partToMachine = ctx.placement
   let aligned = false
   let alignmentNote = "程序未定义 3-2-1 找正，按名义装夹评价位置度。"
-  if (program.alignment) {
+  if (program.alignment?.primary && program.alignment.secondary && program.alignment.origin) {
     const primary = byId(program.alignment.primary)?.plane
     const secondary = byId(program.alignment.secondary)?.line
     const origin = byId(program.alignment.origin)?.point
@@ -96,10 +99,25 @@ export function evaluateProgram(program: MeasurementProgram, hits: StepHits[], c
   }
 
   const toPart = invert(partToMachine)
+  const k = ctx.thermal?.enabled ? ctx.thermal.scale : 1
+  const at20 = (p: Vec3): Vec3 => (k === 1 ? p : { x: p.x / k, y: p.y / k, z: p.z / k })
   for (const f of features) {
-    if (f.circle) f.inPart = applyPoint(toPart, f.circle.center)
-    else if (f.point) f.inPart = applyPoint(toPart, f.point)
-    else if (f.sphere) f.inPart = applyPoint(toPart, f.sphere.center)
+    if (f.circle) f.inPart = at20(applyPoint(toPart, f.circle.center))
+    else if (f.point) f.inPart = at20(applyPoint(toPart, f.point))
+    else if (f.sphere) f.inPart = at20(applyPoint(toPart, f.sphere.center))
+    if (f.diameter !== undefined) f.diameter /= k
+    const step = program.steps.find((s) => s.id === f.stepId)
+    if (f.ok && f.diameter !== undefined && step?.nominalRadius !== undefined && step.sizeTolerance !== undefined) {
+      const nominal = step.nominalRadius * 2
+      const deviation = f.diameter - nominal
+      f.sizeCheck = {
+        nominal,
+        actual: f.diameter,
+        deviation,
+        tolerance: step.sizeTolerance,
+        passed: Math.abs(deviation) <= step.sizeTolerance,
+      }
+    }
   }
 
   const gdt: GdtResult[] = program.gdt.map((check) => {
@@ -156,6 +174,7 @@ export function evaluateProgram(program: MeasurementProgram, hits: StepHits[], c
     partToMachine,
     pallet: palletOffset(partToMachine, ctx.palletToMachine, ctx.nominalPartToPallet),
     tipRadius: ctx.tipRadius,
+    thermal: ctx.thermal ?? null,
   }
 }
 
