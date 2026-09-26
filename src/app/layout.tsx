@@ -15,7 +15,7 @@ const mono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "舅舅公司 · 预检机",
+  title: "预检机",
   description: "预检机（预调 + 测量）仿真工作站：零点托盘、自动建加工坐标系、改写加工程序",
 }
 

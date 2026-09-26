@@ -7,7 +7,7 @@ export function CompanyHome() {
   return (
     <div className="min-h-dvh bg-background">
       <header className="border-b px-5 py-4">
-        <p className="text-xs tracking-[0.2em] text-muted-foreground">舅舅公司 · 智能装备</p>
+        <p className="text-xs tracking-[0.2em] text-muted-foreground">CMM · 智能装备</p>
         <h1 className="mt-1 text-2xl font-semibold">预检机（预调 + 测量）</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
           零件装在零点托盘上，测头自动找基准，建立新的加工坐标系并改写加工程序，机床不用再找正；加工后回到预检机测量尺寸与形位公差。

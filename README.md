@@ -1,8 +1,8 @@
-# 舅舅公司 · 预检机
+# 预检机
 
 预检机（预调 + 测量）仿真工作站：零件装在零点托盘上，测头自动找基准，建立新的加工坐标系并改写加工程序；加工后回到预检机测量尺寸和形位公差。
 
-当前是纯软件仿真，不连接真实运动控制卡、测头和相机。上一阶段的 CAPP 工艺规划原型保留在 `/capp`，暂停迭代。纸面材料在 [`舅舅公司/`](./舅舅公司/) 目录。
+当前是纯软件仿真，不连接真实运动控制卡、测头和相机。上一阶段的 CAPP 工艺规划原型保留在 `/capp`，暂停迭代。纸面材料在 [`docs/`](./docs/) 目录。
 
 ## 本地运行
 
@@ -56,7 +56,7 @@ npm test
 - 与 PLC / 机床（写入工件坐标系）/ MES 的接口。
 - 形位公差最小区域法评价。
 
-## Windows 克隆到「舅舅公司」文件夹
+## Windows 克隆到「CMM」文件夹
 
 Origin CLI 只支持 macOS / Linux / WSL。在 WSL 里：
 
@@ -64,8 +64,8 @@ Origin CLI 只支持 macOS / Linux / WSL。在 WSL 里：
 curl -fsSL https://downloads.cursor.com/origin/install.sh | sh
 origin auth login
 cd /mnt/c/Users/你的Windows用户名/Desktop
-origin repo clone wanghaoran2026/cmm-motion-vision 舅舅公司
-cd 舅舅公司
+origin repo clone wanghaoran2026/cmm-motion-vision CMM
+cd CMM
 npm install
 npm run dev
 ```
