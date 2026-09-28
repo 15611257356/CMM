@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useCmmStore, type CenterView } from "@/lib/store"
-import { Crosshair, OctagonAlert, Pause, Play, Shuffle } from "lucide-react"
+import { Crosshair, OctagonAlert, Pause, Play, Shuffle, WandSparkles } from "lucide-react"
 import dynamic from "next/dynamic"
 import Link from "next/link"
 import { useEffect } from "react"
@@ -35,6 +35,7 @@ function HeaderBar() {
   const togglePause = useCmmStore((s) => s.togglePause)
   const triggerEstop = useCmmStore((s) => s.estop)
   const inspectMode = useCmmStore((s) => s.inspectMode)
+  const autoPreset = useCmmStore((s) => s.autoPreset)
   const blocked = running || estop || !homed
 
   return (
@@ -46,11 +47,11 @@ function HeaderBar() {
           </Link>
           <Badge variant="secondary">仿真模式</Badge>
           {!homed ? <Badge variant="destructive">未回零</Badge> : null}
-          <Badge variant={calibrated ? "outline" : "destructive"}>{calibrated ? "托盘/测针已标定" : "未标定"}</Badge>
+          <Badge variant={calibrated ? "outline" : "destructive"}>{calibrated ? "固定坐标系已建立" : "无固定坐标系"}</Badge>
           {running ? <Badge>{runLabel}中</Badge> : null}
         </div>
         <p className="hidden text-xs text-muted-foreground sm:block">
-          零点托盘 · 测头找基准 · 自动建加工坐标系 · 改写加工程序 · 不连接真实运控卡
+          固定坐标系 · 自动编程 · 自动测量 · 自动找正 · 坐标系变换 · 不连接真实运控卡
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
@@ -60,9 +61,13 @@ function HeaderBar() {
         </Button>
         <Button size="sm" variant="outline" onClick={() => void calibratePallet()} disabled={blocked}>
           <Crosshair data-icon="inline-start" />
-          标定
+          建固定坐标系
         </Button>
-        <Button size="sm" onClick={() => void runProgram()} disabled={blocked}>
+        <Button size="sm" onClick={() => void autoPreset()} disabled={blocked}>
+          <WandSparkles data-icon="inline-start" />
+          一键预调
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => void runProgram()} disabled={blocked || !calibrated}>
           <Play data-icon="inline-start" />
           {inspectMode === "post" ? "运行复测" : "运行预调"}
         </Button>

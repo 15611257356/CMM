@@ -78,6 +78,67 @@ export async function touchSequence(
   return { hits, missed }
 }
 
+/**
+ * 标准球：同一截面四点。每点径向逼近、径向退出，点与点之间绕球心走 90° 圆弧，
+ * 四点做完抬到球顶上方，再垂直向下测顶点。
+ */
+export async function touchSphereSection(
+  driver: ProbeDriver,
+  center: Vec3,
+  radius: number,
+  opts: RunOptions,
+  arcStepDeg = 10
+): Promise<{ hits: ProbeHit[]; missed: string[] }> {
+  const hits: ProbeHit[] = []
+  const missed: string[] = []
+  const standoff = radius + opts.tipRadius + opts.retract
+  const onRing = (deg: number): Vec3 => {
+    const a = (deg * Math.PI) / 180
+    return { x: center.x + standoff * Math.cos(a), y: center.y + standoff * Math.sin(a), z: center.z }
+  }
+
+  const go = async (to: Vec3, speed: number, check = true) => {
+    await opts.beforeMove?.()
+    const from = driver.position()
+    const issue = check ? opts.checkPath?.(from, to) : null
+    if (issue) throw new MotionError(issue, "collision")
+    await driver.moveTo(to, speed)
+  }
+
+  const touch = async (id: string, approach: Vec3, back: Vec3) => {
+    await opts.beforeMove?.()
+    const hit = await driver.probe(approach, opts.searchTravel, opts.probeSpeed)
+    if (hit) {
+      const record = { pointId: id, center: hit, approach }
+      hits.push(record)
+      opts.onHit?.("", record)
+    } else missed.push(id)
+    await go(back, opts.measureSpeed, false)
+  }
+
+  const start = onRing(0)
+  const cur = driver.position()
+  if (cur.z < opts.clearanceZ - 1e-6) await go({ ...cur, z: opts.clearanceZ }, opts.rapidSpeed)
+  await go({ x: start.x, y: start.y, z: opts.clearanceZ }, opts.rapidSpeed)
+  await go(start, opts.measureSpeed)
+
+  for (let i = 0; i < 4; i++) {
+    const deg = i * 90
+    if (i > 0) {
+      for (let a = deg - 90 + arcStepDeg; a <= deg + 1e-9; a += arcStepDeg) await go(onRing(a), opts.measureSpeed)
+    }
+    const a = (deg * Math.PI) / 180
+    await touch(`sph-sec-${i}`, { x: -Math.cos(a), y: -Math.sin(a), z: 0 }, onRing(deg))
+  }
+
+  const last = driver.position()
+  const aboveTop = { x: center.x, y: center.y, z: center.z + standoff }
+  await go({ ...last, z: aboveTop.z }, opts.measureSpeed)
+  await go(aboveTop, opts.measureSpeed)
+  await touch("sph-top", { x: 0, y: 0, z: -1 }, aboveTop)
+  return { hits, missed }
+}
+
 export async function executeProgram(
   program: MeasurementProgram,
   driver: ProbeDriver,

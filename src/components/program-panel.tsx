@@ -9,7 +9,7 @@ import { formatMm } from "@/lib/geom"
 import { GDT_LABEL, KIND_LABEL } from "@/lib/program/demo"
 import type { AlignmentDef, ProgramStep } from "@/lib/program/types"
 import { useCmmStore } from "@/lib/store"
-import { Circle, Minus, Plus, Square, Trash2 } from "lucide-react"
+import { Circle, FileDown, Minus, Plus, Square, Trash2 } from "lucide-react"
 
 const ROLE_LABEL = { primary: "第一基准面", secondary: "第二基准线", origin: "原点" } as const
 
@@ -27,6 +27,7 @@ export function ProgramPanel() {
   const setAlignment = useCmmStore((s) => s.setAlignment)
   const setTolerance = useCmmStore((s) => s.setTolerance)
   const inspectMode = useCmmStore((s) => s.inspectMode)
+  const exportDmis = useCmmStore((s) => s.exportProgramDmis)
 
   const roleOf = (id: string) => {
     const a = program.alignment
@@ -38,14 +39,26 @@ export function ProgramPanel() {
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center justify-between gap-2 px-3 py-2">
         <div className="min-w-0">
-          <p className="text-[11px] tracking-wide text-muted-foreground">预检程序（零件坐标）</p>
+          <p className="text-[11px] tracking-wide text-muted-foreground">自动编程（零件坐标）</p>
           <h2 className="truncate text-sm font-semibold">{program.name}</h2>
         </div>
         <div className="flex gap-1">
-          <Button size="xs" variant={inspectMode === "preset" ? "secondary" : "outline"} onClick={() => loadTemplate("preset")} disabled={running}>
+          <Button
+            size="xs"
+            variant={inspectMode === "preset" ? "secondary" : "outline"}
+            onClick={() => loadTemplate("preset")}
+            disabled={running}
+            title="按布点规则自动生成预调程序"
+          >
             预调
           </Button>
-          <Button size="xs" variant={inspectMode === "post" ? "secondary" : "outline"} onClick={() => loadTemplate("post")} disabled={running}>
+          <Button
+            size="xs"
+            variant={inspectMode === "post" ? "secondary" : "outline"}
+            onClick={() => loadTemplate("post")}
+            disabled={running}
+            title="按布点规则自动生成复测程序"
+          >
             复测
           </Button>
         </div>
@@ -131,6 +144,10 @@ export function ProgramPanel() {
           <Button size="sm" variant="outline" disabled={running} onClick={() => addStep("circle")}>
             <Circle data-icon="inline-start" />
             孔
+          </Button>
+          <Button size="sm" variant="ghost" disabled={program.steps.length === 0} onClick={exportDmis}>
+            <FileDown data-icon="inline-start" />
+            导出 DMIS
           </Button>
         </div>
       </div>

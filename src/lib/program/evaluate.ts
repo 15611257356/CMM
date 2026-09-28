@@ -211,18 +211,25 @@ export function calibrateFromSphere(
   }
 }
 
-/** 标准球触测点：顶点 + 赤道 4 点 + 45° 纬线 4 点。 */
-export function sphereTouchTargets(center: Vec3, radius: number) {
-  const targets = [{ id: "sph-top", surface: add(center, { x: 0, y: 0, z: radius }), approach: { x: 0, y: 0, z: -1 } }]
-  for (let i = 0; i < 4; i++) {
-    const a = (i * Math.PI) / 2
-    const out = { x: Math.cos(a), y: Math.sin(a), z: 0 }
-    targets.push({ id: `sph-eq-${i}`, surface: add(center, scale(out, radius)), approach: scale(out, -1) })
-  }
-  for (let i = 0; i < 4; i++) {
-    const a = (i * Math.PI) / 2 + Math.PI / 4
-    const out = normalize({ x: Math.cos(a), y: Math.sin(a), z: 1 })
-    targets.push({ id: `sph-45-${i}`, surface: add(center, scale(out, radius)), approach: scale(out, -1) })
-  }
-  return targets
+export type FixedFrameCheck = {
+  at: string
+  /** 复测球心相对固定坐标系记录值的偏差（mm）。 */
+  drift: Vec3
+  driftMm: number
+  ok: boolean
+}
+
+/** 超过这个漂移就要重新建立固定坐标系。 */
+export const FIXED_FRAME_DRIFT_LIMIT = 0.002
+
+export function checkFixedFrame(
+  centers: Vec3[],
+  calibration: PalletCalibration,
+  sphereInPallet: Vec3
+): FixedFrameCheck {
+  const fit = fitSphere(centers)
+  const expected = applyPoint(calibration.palletToMachine, sphereInPallet)
+  const drift = sub(fit.center, expected)
+  const driftMm = Math.hypot(drift.x, drift.y, drift.z)
+  return { at: new Date().toISOString(), drift, driftMm, ok: driftMm <= FIXED_FRAME_DRIFT_LIMIT }
 }

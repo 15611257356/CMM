@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { WORK_OFFSETS, workOffsetFromPose, workOffsetNc, type WorkOffsetCode } from "@/lib/coords/work-offset"
+import { FIXED_FRAME_DRIFT_LIMIT } from "@/lib/program/evaluate"
 import { applyDialYaw } from "@/lib/program/indicator"
 import { MATERIALS, appliedThermal, type MaterialKey } from "@/lib/measure/thermal"
 import { NOMINAL_PART_ON_PALLET, PALLET } from "@/lib/machine/setup"
@@ -102,6 +103,8 @@ export function CoordsPanel() {
   const withRotation = useCmmStore((s) => s.withRotation)
   const setWithRotation = useCmmStore((s) => s.setWithRotation)
   const calibratePallet = useCmmStore((s) => s.calibratePallet)
+  const verifyFixedFrame = useCmmStore((s) => s.verifyFixedFrame)
+  const frameCheck = useCmmStore((s) => s.frameCheck)
   const running = useCmmStore((s) => s.running)
   const homed = useCmmStore((s) => s.motion.homed)
   const log = useCmmStore((s) => s.log)
@@ -131,12 +134,14 @@ export function CoordsPanel() {
     <ScrollArea className="h-full">
       <div className="mx-auto flex max-w-4xl flex-col gap-3 p-4">
         <Section
-          title="① 托盘零点与测针标定"
-          badge={calibration ? <Badge variant="secondary">已标定</Badge> : <Badge variant="destructive">未标定</Badge>}
+          title="① 固定坐标系（本机基准）"
+          badge={calibration ? <Badge variant="secondary">已建立</Badge> : <Badge variant="destructive">未建立</Badge>}
         >
           <p className="mb-2 text-xs text-muted-foreground">
-            测托盘上 Ø{(PALLET.referenceSphere.radius * 2).toFixed(4)} mm 标准球：球心定出托盘零点在本机的位置，
-            球心轨迹半径减去证书半径得到测针有效半径。换测针、撞针或每班开机都应重新标定。
+            每次测量找正之前必须先有这个坐标系，它不随零件更换。测托盘上 Ø
+            {(PALLET.referenceSphere.radius * 2).toFixed(4)} mm 标准球：同一截面 4 点，径向逼近、径向退出，
+            点间绕球心走 90° 圆弧，最后测顶点。球心定出托盘零点在本机的位置，同时得到测针有效半径。
+            换测针、撞针或每班开机都要重建，平时可以复核漂移。
           </p>
           {calibration ? (
             <dl className="mb-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-4">
@@ -152,10 +157,22 @@ export function CoordsPanel() {
               <dd className="col-span-3 font-mono">{new Date(calibration.at).toLocaleString("zh-CN", { hour12: false })}</dd>
             </dl>
           ) : null}
-          <Button size="sm" variant="outline" disabled={running || !homed} onClick={() => void calibratePallet()}>
-            <Crosshair data-icon="inline-start" />
-            {homed ? "标定托盘零点 / 测针" : "请先回零"}
-          </Button>
+          {frameCheck ? (
+            <p className={`mb-2 font-mono text-xs ${frameCheck.ok ? "text-teal-600 dark:text-teal-400" : "text-destructive"}`}>
+              复核 {new Date(frameCheck.at).toLocaleTimeString("zh-CN", { hour12: false })}：漂移{" "}
+              {(frameCheck.driftMm * 1000).toFixed(1)} μm（限 {(FIXED_FRAME_DRIFT_LIMIT * 1000).toFixed(0)} μm）
+              {frameCheck.ok ? " · 通过" : " · 超限，请重建"}
+            </p>
+          ) : null}
+          <div className="flex flex-wrap gap-1.5">
+            <Button size="sm" variant="outline" disabled={running || !homed} onClick={() => void calibratePallet()}>
+              <Crosshair data-icon="inline-start" />
+              {homed ? (calibration ? "重建固定坐标系" : "建立固定坐标系") : "请先回零"}
+            </Button>
+            <Button size="sm" variant="ghost" disabled={running || !homed || !calibration} onClick={() => void verifyFixedFrame()}>
+              复核漂移
+            </Button>
+          </div>
         </Section>
 
         <Section title="温度补偿" badge={<Badge variant="outline">{heat.enabled ? `${heat.partTempC.toFixed(1)} °C` : "关闭"}</Badge>}>

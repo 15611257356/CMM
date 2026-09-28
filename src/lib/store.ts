@@ -13,16 +13,19 @@ import { applyPoint, invert, type RigidTransform } from "@/lib/math/transform"
 import { HardwareMotionController } from "@/lib/motion/hardware-stub"
 import { SimulatedMotionController } from "@/lib/motion/simulated-controller"
 import { MotionError, type MotionSnapshot } from "@/lib/motion/types"
-import { circleStep, createDemoProgram, createPostProgram, createPresetProgram } from "@/lib/program/demo"
+import { autoProgram, type PartModel } from "@/lib/program/auto"
+import { circleStep, createDemoProgram, PLATE_MODEL } from "@/lib/program/demo"
+import { exportDmis } from "@/lib/program/dmis"
 import { renameProgram, renameStep, setAlignmentRole, setCircleSpec, setGdtTolerance, setPointCount } from "@/lib/program/edit"
 import { applyDialYaw, indicateEdge, type IndicatorReading, type IndicatorResult } from "@/lib/program/indicator"
 import {
   calibrateFromSphere,
+  checkFixedFrame,
   evaluateProgram,
-  sphereTouchTargets,
+  type FixedFrameCheck,
   type PalletCalibration,
 } from "@/lib/program/evaluate"
-import { executeProgram, touchSequence, type ProbeDriver, type RunOptions } from "@/lib/program/runner"
+import { executeProgram, touchSphereSection, type ProbeDriver, type RunOptions } from "@/lib/program/runner"
 import { appliedThermal, DEFAULT_THERMAL, type ThermalSettings } from "@/lib/measure/thermal"
 import type {
   AlignmentDef,
@@ -102,6 +105,7 @@ type AppState = {
   rapidSpeed: number
   probeSpeed: number
   calibration: PalletCalibration | null
+  frameCheck: FixedFrameCheck | null
   truth: SimTruth
   machineTool: MachineToolConfig
   ncSource: string | null
@@ -150,6 +154,9 @@ type AppState = {
   resetEstop: () => void
   runProgram: () => Promise<void>
   calibratePallet: () => Promise<void>
+  verifyFixedFrame: () => Promise<void>
+  autoPreset: () => Promise<void>
+  exportProgramDmis: () => void
   togglePause: () => void
   loadNewPart: () => void
   setMachineTool: (patch: Partial<MachineToolConfig>) => void
@@ -169,6 +176,21 @@ export function palletToMachineOf(s: Pick<AppState, "calibration">): RigidTransf
 
 export function placementOf(s: Pick<AppState, "calibration">): RigidTransform {
   return nominalPartToMachine(palletToMachineOf(s))
+}
+
+/** 自动编程用的零件模型：视觉识别到孔时用视觉孔位，否则用示例底板。 */
+export function partModelOf(s: Pick<AppState, "visionDetections">): PartModel {
+  if (!s.visionDetections.length) return PLATE_MODEL
+  return {
+    ...PLATE_MODEL,
+    holes: s.visionDetections.map((d, i) => ({
+      id: String.fromCharCode(65 + i),
+      name: `孔${String.fromCharCode(65 + i)}`,
+      x: d.x,
+      y: d.y,
+      r: Math.round(d.radius * 2) / 2,
+    })),
+  }
 }
 
 export function tipRadiusOf(s: Pick<AppState, "calibration">): number {
@@ -259,6 +281,7 @@ export const useCmmStore = create<AppState>((set, get) => {
     rapidSpeed: 220,
     probeSpeed: 8,
     calibration: null,
+    frameCheck: null,
     truth: createTruth(),
     machineTool: DEFAULT_MACHINE_TOOL,
     ncSource: null,
@@ -316,8 +339,8 @@ export const useCmmStore = create<AppState>((set, get) => {
     resetDemoProgram: () => get().loadTemplate("demo"),
 
     loadTemplate: (which) => {
-      const program =
-        which === "preset" ? createPresetProgram() : which === "post" ? createPostProgram() : createDemoProgram()
+      const part = partModelOf(get())
+      const program = which === "demo" ? createDemoProgram() : autoProgram(part, which)
       const inspectMode: InspectMode = which === "demo" ? get().inspectMode : which
       writeJson(PROGRAM_KEY, program)
       const prefs: Prefs = {
@@ -328,7 +351,13 @@ export const useCmmStore = create<AppState>((set, get) => {
       }
       writeJson(PREFS_KEY, prefs)
       set({ program, inspectMode, hits: [], evaluation: null, selectedStepId: null, currentStepId: null })
-      get().log("info", `已载入「${program.name}」`)
+      const points = program.steps.reduce((n, step) => n + step.points.length, 0)
+      get().log(
+        "info",
+        which === "demo"
+          ? `已载入「${program.name}」`
+          : `自动编程：「${program.name}」${program.steps.length} 个特征、${points} 个触测点${part.holes !== PLATE_MODEL.holes ? "（孔位取自视觉识别）" : ""}`
+      )
     },
 
     renameCurrentProgram: (name) => {
@@ -545,16 +574,16 @@ export const useCmmStore = create<AppState>((set, get) => {
     },
 
     calibratePallet: async () => {
-      if (!beginRun("标定")) return
+      if (!beginRun("建固定坐标系")) return
       const sphere = PALLET.referenceSphere
       const nominalCenter = applyPoint(PALLET.nominalToMachine, sphere.center)
-      get().log("info", `标准球标定：Ø${(sphere.radius * 2).toFixed(4)} mm，共 9 点`)
+      get().log("info", `建立固定坐标系：测 Ø${(sphere.radius * 2).toFixed(4)} mm 标准球，截面 4 点 + 顶点`)
       try {
         const opts = {
           ...runOptions(PALLET.nominalToMachine, nominalCenter.z + 30),
           tipRadius: PROBE.nominalTipRadius,
         }
-        const { hits, missed } = await touchSequence(driver, sphereTouchTargets(nominalCenter, sphere.radius), opts, false)
+        const { hits, missed } = await touchSphereSection(driver, nominalCenter, sphere.radius, opts)
         if (missed.length) throw new Error(`${missed.length} 个标定点未触发，请检查标准球是否装好`)
         const cur = motion.getSnapshot().position
         await motion.moveTo({ ...cur, z: nominalCenter.z + 30 }, get().rapidSpeed)
@@ -565,28 +594,102 @@ export const useCmmStore = create<AppState>((set, get) => {
           PALLET.nominalToMachine
         )
         writeJson(CALIBRATION_KEY, calibration)
-        set({ calibration, evaluation: null })
+        set({ calibration, frameCheck: null, evaluation: null })
         const d = calibration.shift
         get().log(
           "info",
-          `标定完成：测针有效半径 ${calibration.tipRadius.toFixed(4)} mm，托盘零点偏移 (${d.x.toFixed(4)}, ${d.y.toFixed(4)}, ${d.z.toFixed(4)})，球形误差 ${(calibration.sphereForm * 1000).toFixed(1)} μm`
+          `固定坐标系已建立：测针有效半径 ${calibration.tipRadius.toFixed(4)} mm，托盘零点偏移 (${d.x.toFixed(4)}, ${d.y.toFixed(4)}, ${d.z.toFixed(4)})，球形误差 ${(calibration.sphereForm * 1000).toFixed(1)} μm`
         )
       } catch (error) {
-        get().log("error", error instanceof Error ? error.message : "标定失败")
+        get().log("error", error instanceof Error ? error.message : "建立固定坐标系失败")
       } finally {
         endRun()
       }
     },
 
+    verifyFixedFrame: async () => {
+      const calibration = get().calibration
+      if (!calibration) {
+        get().log("error", "还没有固定坐标系，请先建立")
+        return
+      }
+      if (!beginRun("复核")) return
+      const sphere = PALLET.referenceSphere
+      const expected = applyPoint(calibration.palletToMachine, sphere.center)
+      try {
+        const opts = { ...runOptions(calibration.palletToMachine, expected.z + 30), tipRadius: calibration.tipRadius }
+        const { hits, missed } = await touchSphereSection(driver, expected, sphere.radius, opts)
+        if (missed.length) throw new Error(`${missed.length} 个复核点未触发`)
+        const cur = motion.getSnapshot().position
+        await motion.moveTo({ ...cur, z: expected.z + 30 }, get().rapidSpeed)
+        const frameCheck = checkFixedFrame(
+          hits.map((h) => h.center),
+          calibration,
+          sphere.center
+        )
+        set({ frameCheck })
+        get().log(
+          frameCheck.ok ? "info" : "warn",
+          frameCheck.ok
+            ? `固定坐标系复核通过：漂移 ${(frameCheck.driftMm * 1000).toFixed(1)} μm`
+            : `固定坐标系漂移 ${(frameCheck.driftMm * 1000).toFixed(1)} μm，超过 2 μm，请重新建立`
+        )
+      } catch (error) {
+        get().log("error", error instanceof Error ? error.message : "复核失败")
+      } finally {
+        endRun()
+      }
+    },
+
+    autoPreset: async () => {
+      if (get().running) return
+      if (!get().motion.homed) {
+        get().log("error", "未回零：先回零，再一键预调")
+        return
+      }
+      get().log("info", "一键预调：固定坐标系 → 自动编程 → 自动测量 → 自动找正 → 工件坐标系")
+      if (!get().calibration) {
+        await get().calibratePallet()
+        if (!get().calibration) return
+      }
+      get().loadTemplate("preset")
+      await get().runProgram()
+      const evaluation = get().evaluation
+      const offset = get().report?.workOffset
+      if (evaluation?.aligned && offset) {
+        get().log(
+          "info",
+          `一键预调完成：${offset.register} X ${offset.x.toFixed(4)} Y ${offset.y.toFixed(4)} Z ${offset.z.toFixed(4)}，绕 Z ${offset.rotationDeg.toFixed(4)}°`
+        )
+        set({ view: "coords" })
+      }
+    },
+
+    exportProgramDmis: () => {
+      const program = get().program
+      const text = exportDmis(program)
+      const blob = new Blob([text], { type: "text/plain;charset=utf-8" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `${program.id}.dms`
+      a.click()
+      URL.revokeObjectURL(url)
+      get().log("info", `已导出 DMIS 程序 ${program.id}.dms，可在现成三坐标软件中执行采点`)
+    },
+
     runProgram: async () => {
       const { program } = get()
       if (!program.steps.length) {
-        get().log("warn", "程序为空，请先加载示例或添加特征")
+        get().log("warn", "程序为空，请先自动编程或添加特征")
+        return
+      }
+      if (!get().calibration) {
+        get().log("error", "还没有固定坐标系：先测标准球建立本机固定坐标系，再测量找正")
         return
       }
       const inspectMode = get().inspectMode
       if (!beginRun(inspectMode === "post" ? "复测" : "预调")) return
-      if (!get().calibration) get().log("warn", "托盘零点和测针未标定，按设计值计算，精度不可信")
       const placement = placementOf(get())
       const clearanceZ = applyPoint(placement, { x: 0, y: 0, z: 0 }).z + PROBE.clearanceAbovePart
       set({ hits: [], evaluation: null, currentStepId: program.steps[0]?.id ?? null })

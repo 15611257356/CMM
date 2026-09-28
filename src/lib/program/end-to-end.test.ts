@@ -5,8 +5,8 @@ import { applyPoint, compose, toPoseDeg } from "@/lib/math/transform"
 import { transformNcProgram } from "@/lib/nc/transform"
 import { createDemoProgram, createPostProgram } from "@/lib/program/demo"
 import { appliedThermal } from "@/lib/measure/thermal"
-import { calibrateFromSphere, evaluateProgram, sphereTouchTargets } from "@/lib/program/evaluate"
-import { executeProgram, touchSequence, type ProbeDriver, type RunOptions } from "@/lib/program/runner"
+import { calibrateFromSphere, checkFixedFrame, evaluateProgram } from "@/lib/program/evaluate"
+import { executeProgram, touchSequence, touchSphereSection, type ProbeDriver, type RunOptions } from "@/lib/program/runner"
 import { createTruth, segmentClearance, simulateTouch, type SimTruth } from "@/lib/sim/world"
 
 function seeded(seed: number) {
@@ -20,12 +20,13 @@ function seeded(seed: number) {
   }
 }
 
-function instantDriver(truth: SimTruth, random: () => number): ProbeDriver {
+function instantDriver(truth: SimTruth, random: () => number, trace?: { x: number; y: number; z: number }[]): ProbeDriver {
   let pos = { x: 0, y: 0, z: 300 }
   return {
     position: () => pos,
     moveTo: async (p) => {
       pos = { ...p }
+      trace?.push(pos)
     },
     probe: async (dir, maxTravel) => {
       const r = simulateTouch(truth, pos, dir, maxTravel, random)
@@ -62,11 +63,11 @@ describe("预检闭环（仿真）", () => {
 
       const sphere = PALLET.referenceSphere
       const nominalSphere = applyPoint(PALLET.nominalToMachine, sphere.center)
-      const cal = await touchSequence(
+      const cal = await touchSphereSection(
         driver,
-        sphereTouchTargets(nominalSphere, sphere.radius),
-        options(truth, PALLET.nominalToMachine, PROBE.nominalTipRadius, nominalSphere.z + 30),
-        false
+        nominalSphere,
+        sphere.radius,
+        options(truth, PALLET.nominalToMachine, PROBE.nominalTipRadius, nominalSphere.z + 30)
       )
       expect(cal.missed).toEqual([])
       const calibration = calibrateFromSphere(
@@ -125,6 +126,55 @@ describe("预检闭环（仿真）", () => {
       expect(toPoseDeg(evaluation.pallet.deltaInNominalPart).rz).toBeCloseTo(want.rz, 2)
     })
   }
+
+  it("测标准球：截面四点径向进出、点间走圆弧、最后测顶点，复核漂移在限内", async () => {
+    const random = seeded(5)
+    const truth = createTruth(random)
+    const trace: { x: number; y: number; z: number }[] = []
+    const driver = instantDriver(truth, random, trace)
+    const sphere = PALLET.referenceSphere
+    const nominal = applyPoint(PALLET.nominalToMachine, sphere.center)
+    const opts = options(truth, PALLET.nominalToMachine, PROBE.nominalTipRadius, nominal.z + 30)
+    const { hits, missed } = await touchSphereSection(driver, nominal, sphere.radius, opts)
+    expect(missed).toEqual([])
+    expect(hits.map((h) => h.pointId)).toEqual(["sph-sec-0", "sph-sec-1", "sph-sec-2", "sph-sec-3", "sph-top"])
+    const section = hits.slice(0, 4)
+    for (const h of section) {
+      expect(Math.abs(h.approach.z)).toBeLessThan(1e-12)
+      expect(Math.abs(h.center.z - nominal.z)).toBeLessThan(0.05)
+    }
+    expect(hits[4].approach).toEqual({ x: 0, y: 0, z: -1 })
+
+    const standoff = sphere.radius + PROBE.nominalTipRadius + PROBE.retract
+    const firstTouch = trace.findIndex((p) => Math.abs(p.z - nominal.z) < 1e-9)
+    const beforeTop = trace.findIndex((p) => Math.abs(p.x - nominal.x) < 1e-9 && Math.abs(p.y - nominal.y) < 1e-9)
+    const ring = trace.slice(firstTouch, beforeTop).filter((p) => Math.abs(p.z - nominal.z) < 1e-9)
+    expect(ring.length).toBeGreaterThan(20)
+    for (const p of ring) {
+      const rr = Math.hypot(p.x - nominal.x, p.y - nominal.y)
+      expect(rr).toBeLessThanOrEqual(standoff + 1e-6)
+      expect(rr).toBeGreaterThan(sphere.radius + PROBE.nominalTipRadius)
+    }
+
+    const calibration = calibrateFromSphere(
+      hits.map((h) => h.center),
+      sphere.radius,
+      sphere.center,
+      PALLET.nominalToMachine
+    )
+    const again = await touchSphereSection(
+      driver,
+      applyPoint(calibration.palletToMachine, sphere.center),
+      sphere.radius,
+      { ...opts, tipRadius: calibration.tipRadius }
+    )
+    const check = checkFixedFrame(
+      again.hits.map((h) => h.center),
+      calibration,
+      sphere.center
+    )
+    expect(check.ok).toBe(true)
+  })
 
   it("零件升温后，孔径补偿回 20 °C 图纸尺寸", async () => {
     const random = seeded(11)
