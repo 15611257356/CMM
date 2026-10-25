@@ -31,6 +31,12 @@ import type {
   ReportSnapshot,
   StepHits,
 } from "@/lib/program/types"
+import { exportSuperDmis as buildSuperDmis, superDmisSafeName } from "@/lib/super-dmis/dmis"
+import { emptyGeom21, geom21IsIdentity, type Geom21 } from "@/lib/super-dmis/geom21"
+import { compensateImport, detectAndParse } from "@/lib/super-dmis/import-file"
+import type { StepGaugeTruth } from "@/lib/super-dmis/parse-dat"
+import { matchImportedHits, programFromImport } from "@/lib/super-dmis/parse-hits"
+import { tableSummary } from "@/lib/super-dmis/parse-nonlinear"
 import { createTruth, segmentClearance, simulateTouch, type SimTruth } from "@/lib/sim/world"
 import { HardwareCameraDriver } from "@/lib/vision/camera"
 import { detectCircles, imageDataFromUrl } from "@/lib/vision/detect"
@@ -42,6 +48,7 @@ const PROGRAM_KEY = "yujian-program-v2"
 const REPORT_KEY = "yujian-report-v2"
 const CALIBRATION_KEY = "yujian-calibration-v1"
 const MACHINE_TOOL_KEY = "yujian-machine-tool-v1"
+const GEOM21_KEY = "yujian-geom21-v1"
 
 /** program / motion 只在窄屏布局作为独立页签出现。 */
 export type CenterView = "machine" | "vision" | "coords" | "nc" | "report" | "program" | "motion"
@@ -100,6 +107,9 @@ type AppState = {
   visionError: string | null
   visionBusy: boolean
   hardwareNote: string
+  geom21: Geom21
+  applyGeomOnImport: boolean
+  stepGauge: StepGaugeTruth | null
   hydrateFromStorage: () => void
   log: (level: LogLevel, message: string) => void
   setView: (view: CenterView) => void
@@ -127,6 +137,21 @@ type AppState = {
   detectVision: () => Promise<void>
   applyVisionSteps: () => void
   exportReport: () => void
+  exportSuperDmis: () => void
+  importExternalFile: (file: File) => Promise<void>
+  setApplyGeomOnImport: (value: boolean) => void
+  setGeom21: (patch: Partial<Geom21>) => void
+  clearGeom21: () => void
+}
+
+function downloadText(filename: string, text: string) {
+  const blob = new Blob([text], { type: "text/plain;charset=utf-8" })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 export function palletToMachineOf(s: Pick<AppState, "calibration">): RigidTransform {
@@ -236,17 +261,22 @@ export const useCmmStore = create<AppState>((set, get) => {
     visionError: null,
     visionBusy: false,
     hardwareNote: hardwareCamera.isConnected() ? "相机已连接" : "工业相机未连接 · 使用示意图或上传图片",
+    geom21: emptyGeom21(),
+    applyGeomOnImport: false,
+    stepGauge: null,
 
     hydrateFromStorage: () => {
       const program = readJson<MeasurementProgram>(PROGRAM_KEY)
       const report = readJson<ReportSnapshot>(REPORT_KEY)
       const calibration = readJson<PalletCalibration>(CALIBRATION_KEY)
       const machineTool = readJson<MachineToolConfig>(MACHINE_TOOL_KEY)
+      const geom21 = readJson<Geom21>(GEOM21_KEY)
       set({
         ...(program?.steps?.length ? { program } : {}),
         ...(report ? { report } : {}),
         ...(calibration ? { calibration } : {}),
         ...(machineTool ? { machineTool: { ...DEFAULT_MACHINE_TOOL, ...machineTool } } : {}),
+        ...(geom21 ? { geom21: { ...emptyGeom21(), ...geom21 } } : {}),
       })
     },
 
@@ -566,6 +596,108 @@ export const useCmmStore = create<AppState>((set, get) => {
       set({ view: "report" })
       requestAnimationFrame(() => window.print())
       get().log("info", "已打开打印预览，可保存为 PDF")
+    },
+
+    exportSuperDmis: () => {
+      const program = get().program
+      if (!program.steps.length) {
+        get().log("warn", "程序为空，无法导出 DMIS")
+        return
+      }
+      const text = buildSuperDmis(program)
+      const filename = superDmisSafeName(program.id || program.name)
+      downloadText(filename, text)
+      get().log(
+        "info",
+        `已导出 SuperDMIS 程序 ${filename}。安装路径只能用英文、数字、-、_，不要放到带中文或空格的目录，否则 SuperDMIS 会无法保存/导出报告`
+      )
+    },
+
+    setApplyGeomOnImport: (applyGeomOnImport) => set({ applyGeomOnImport }),
+
+    setGeom21: (patch) => {
+      const geom21 = { ...get().geom21, ...patch }
+      writeJson(GEOM21_KEY, geom21)
+      set({ geom21 })
+    },
+
+    clearGeom21: () => {
+      const geom21 = emptyGeom21()
+      writeJson(GEOM21_KEY, geom21)
+      set({ geom21, stepGauge: null })
+      get().log("info", "已清除 X-Inspect 几何补偿表")
+    },
+
+    importExternalFile: async (file) => {
+      let text: string
+      try {
+        text = await file.text()
+      } catch {
+        get().log("error", `无法读取 ${file.name}`)
+        return
+      }
+      try {
+        const detected = detectAndParse(text, file.name)
+        if (detected.kind === "step-gauge") {
+          set({ stepGauge: detected.data })
+          get().log(
+            "info",
+            `已导入步距规真值 ${file.name}，${detected.data.segments.length} 段。这是 X-Inspect 校准用的证书数据，不是零件测点`
+          )
+          return
+        }
+        if (detected.kind === "nonlinear") {
+          writeJson(GEOM21_KEY, detected.data)
+          set({ geom21: detected.data, applyGeomOnImport: true })
+          get().log(
+            "info",
+            `已导入 X-Inspect 非线性补偿 ${file.name}：X ${tableSummary(detected.data.x)}，Y ${tableSummary(detected.data.y)}，Z ${tableSummary(detected.data.z)}。导入测点时可勾选施加补偿`
+          )
+          return
+        }
+        const geom = get().geom21
+        const shouldComp = get().applyGeomOnImport && !geom21IsIdentity(geom)
+        const data = compensateImport(detected.data, geom, shouldComp)
+        let program = get().program
+        let hits = program.steps.length ? matchImportedHits(program, data.features) : []
+        const matched = hits.filter((h) => h.hits.length).length
+        if (!program.steps.length || matched === 0) {
+          program = programFromImport(data.features, file.name.replace(/\.[^.]+$/, "") || "SuperDMIS 导入")
+          writeJson(PROGRAM_KEY, program)
+          hits = matchImportedHits(program, data.features)
+        }
+        const evaluation = evaluateProgram(program, hits, {
+          tipRadius: tipRadiusOf(get()),
+          palletToMachine: palletToMachineOf(get()),
+          nominalPartToPallet: NOMINAL_PART_ON_PALLET,
+          placement: placementOf(get()),
+        })
+        const report: ReportSnapshot = {
+          createdAt: nowIso(),
+          programName: program.name,
+          features: evaluation.features,
+          gdt: evaluation.gdt,
+          aligned: evaluation.aligned,
+          alignmentNote: evaluation.alignmentNote,
+          palletDelta: evaluation.pallet.delta,
+          tiltWarning: evaluation.pallet.tiltWarning,
+          tipRadius: evaluation.tipRadius,
+          calibrated: Boolean(get().calibration),
+        }
+        writeJson(REPORT_KEY, report)
+        set({ program, hits, evaluation, report, view: "coords", selectedStepId: program.steps[0]?.id ?? null })
+        const d = evaluation.pallet.delta
+        get().log(
+          "info",
+          `已导入 ${file.name}（${data.format}${shouldComp ? "，已施加 21 项补偿" : ""}），${data.features.length} 个特征。${
+            evaluation.aligned
+              ? `已 3-2-1 找正，零件相对托盘偏差 X ${d.x.toFixed(4)} Y ${d.y.toFixed(4)} Z ${d.z.toFixed(4)} mm，旋转 ${d.rz.toFixed(4)}°`
+              : evaluation.alignmentNote
+          }`
+        )
+      } catch (error) {
+        get().log("error", error instanceof Error ? error.message : "导入失败")
+      }
     },
   }
 })

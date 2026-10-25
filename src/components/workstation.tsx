@@ -49,7 +49,7 @@ function HeaderBar() {
           {running ? <Badge>{runLabel}中</Badge> : null}
         </div>
         <p className="hidden text-xs text-muted-foreground sm:block">
-          零点托盘 · 测头找基准 · 自动建加工坐标系 · 改写加工程序 · 不连接真实运控卡
+          SuperDMIS 采点 · X-Inspect 补偿 · 本机 3-2-1 找正 · 输出加工坐标系
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-1.5">

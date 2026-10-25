@@ -6,7 +6,8 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { formatMm } from "@/lib/geom"
 import { GDT_LABEL, KIND_LABEL } from "@/lib/program/demo"
 import { useCmmStore } from "@/lib/store"
-import { Circle, Minus, Plus, RotateCcw, Square, Trash2 } from "lucide-react"
+import { Circle, FileDown, FileUp, Minus, Plus, RotateCcw, Square, Trash2 } from "lucide-react"
+import { useRef } from "react"
 
 const ROLE_LABEL = { primary: "第一基准面", secondary: "第二基准线", origin: "原点" } as const
 
@@ -21,6 +22,9 @@ export function ProgramPanel() {
   const addStep = useCmmStore((s) => s.addStep)
   const removeStep = useCmmStore((s) => s.removeStep)
   const resetDemo = useCmmStore((s) => s.resetDemoProgram)
+  const exportSuperDmis = useCmmStore((s) => s.exportSuperDmis)
+  const importExternalFile = useCmmStore((s) => s.importExternalFile)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   const roleOf = (id: string) => {
     const a = program.alignment
@@ -35,10 +39,31 @@ export function ProgramPanel() {
           <p className="text-[11px] tracking-wide text-muted-foreground">预检程序（零件坐标）</p>
           <h2 className="truncate text-sm font-semibold">{program.name}</h2>
         </div>
-        <Button size="xs" variant="outline" onClick={resetDemo} disabled={running}>
-          <RotateCcw data-icon="inline-start" />
-          示例
-        </Button>
+        <div className="flex shrink-0 flex-wrap justify-end gap-1">
+          <Button size="xs" variant="outline" onClick={resetDemo} disabled={running}>
+            <RotateCcw data-icon="inline-start" />
+            示例
+          </Button>
+          <Button size="xs" variant="outline" onClick={exportSuperDmis} disabled={running || program.steps.length === 0}>
+            <FileDown data-icon="inline-start" />
+            DMIS
+          </Button>
+          <Button size="xs" variant="outline" onClick={() => fileRef.current?.click()} disabled={running}>
+            <FileUp data-icon="inline-start" />
+            导入
+          </Button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".dms,.dmi,.txt,.csv,.dat,.rpt,.out"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              e.target.value = ""
+              if (file) void importExternalFile(file)
+            }}
+          />
+        </div>
       </div>
 
       {program.steps.length === 0 ? (
@@ -104,6 +129,9 @@ export function ProgramPanel() {
       )}
 
       <div className="border-t px-3 py-2">
+        <p className="mb-1.5 text-[11px] text-muted-foreground">
+          导出 DMIS 给 SuperDMIS 采点；导入测点、X-Inspect 非线性表或步距规 .dat 后在这里做找正。
+        </p>
         <p className="mb-1.5 text-[11px] text-muted-foreground">在测针当前位置添加特征</p>
         <div className="flex flex-wrap gap-1.5">
           <Button size="sm" variant="outline" disabled={running} onClick={() => addStep("point")}>
