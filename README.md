@@ -52,8 +52,8 @@ npm test
 
 ## 上真机前还缺什么
 
-- 工控机上的 MACC.dll 桥接服务（默认 `ws://127.0.0.1:17652/macc`），把 JSON 转成手册 T1.1 的 DLL 调用。
-- 温度补偿：SetupTool V3.16 与 IPPServer V4.08 必须配套升级并重设温度映射表；未使能温度补偿时可照常使用。
+- 工控机上的 MACC.dll 桥接服务（默认 `ws://127.0.0.1:17652/macc`），把 JSON 转成手册 T1.1 的 DLL 调用；控制器以太网出厂 `128.0.0.9:10000`（SetupTool V3.33）。
+- 温度补偿：SetupTool V3.33 必须配 IPPServer V4.08（映射从 V3.16 起改过）。可导入 `Config/config.xml`。未使能温度补偿时可照常使用。
 - 用量块、环规验证 X-Inspect / 控制器误差补偿表。 SuperDMIS 必须装在纯英文路径（如 `C:\SuperDmis`）。
 - 真实相机标定和手眼标定；STEP 模型导入与选点编程。
 - 与 PLC / 机床（写入工件坐标系）/ MES 的接口。

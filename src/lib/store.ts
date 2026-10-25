@@ -13,6 +13,7 @@ import { applyPoint, invert, type RigidTransform } from "@/lib/math/transform"
 import { MaccBridgeController } from "@/lib/macc/controller"
 import { MACC_TEMP_PAIRING } from "@/lib/macc/errors"
 import { DEFAULT_MACC_BRIDGE, emptyTelemetry, type MaccTelemetry } from "@/lib/macc/protocol"
+import { setupToolSummary, type SetupToolProfile } from "@/lib/macc/setuptool"
 import { SimulatedMotionController } from "@/lib/motion/simulated-controller"
 import { MotionError, type MotionSnapshot } from "@/lib/motion/types"
 import { circleStep, createDemoProgram } from "@/lib/program/demo"
@@ -115,6 +116,7 @@ type AppState = {
   macc: MaccTelemetry
   driveHardware: boolean
   maccBusy: boolean
+  setupTool: SetupToolProfile | null
   hydrateFromStorage: () => void
   log: (level: LogLevel, message: string) => void
   setView: (view: CenterView) => void
@@ -212,8 +214,8 @@ export const useCmmStore = create<AppState>((set, get) => {
     placement,
     clearanceZ,
     tipRadius: tipRadiusOf(get()),
-    retract: PROBE.retract,
-    searchTravel: PROBE.searchTravel,
+    retract: get().setupTool?.retractMm ?? PROBE.retract,
+    searchTravel: get().setupTool?.searchMm ?? PROBE.searchTravel,
     rapidSpeed: get().rapidSpeed,
     measureSpeed: get().measureSpeed,
     probeSpeed: get().probeSpeed,
@@ -283,6 +285,7 @@ export const useCmmStore = create<AppState>((set, get) => {
     macc: emptyTelemetry(),
     driveHardware: false,
     maccBusy: false,
+    setupTool: null,
 
     hydrateFromStorage: () => {
       const program = readJson<MeasurementProgram>(PROGRAM_KEY)
@@ -657,6 +660,21 @@ export const useCmmStore = create<AppState>((set, get) => {
       }
       try {
         const detected = detectAndParse(text, file.name)
+        if (detected.kind === "setuptool") {
+          const setupTool = detected.data
+          hardwareMotion.setMeasureParams({ retractMm: setupTool.retractMm, retractSpeed: setupTool.retractSpeed })
+          set({
+            setupTool,
+            probeSpeed: setupTool.measureSpeed,
+            measureSpeed: setupTool.positionSpeed,
+            rapidSpeed: setupTool.positionSpeed,
+          })
+          get().log(
+            "info",
+            `已导入 SetupTool ${setupToolSummary(setupTool)}。工控机桥接连控制器时用该 IP/端口。温度通道 ${setupTool.temperatureChannels.filter((c) => c).length}/16 已映射`
+          )
+          return
+        }
         if (detected.kind === "step-gauge") {
           set({ stepGauge: detected.data })
           get().log(

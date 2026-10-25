@@ -95,9 +95,9 @@ export function maccOk(code: number): boolean {
   return code === 0
 }
 
-/** 更新前必看：温度补偿映射在 SetupTool V3.16 与 IPPServer V4.08 同时改过，必须配套升级。 */
+/** 更新前必看：温度映射从 V3.16 起改过；现场包是 SetupTool V3.33，必须配 IPPServer V4.08。 */
 export const MACC_TEMP_PAIRING = {
-  setupTool: "SetupTool V3.16",
+  setupTool: "SetupTool V3.33",
   ippServer: "IPPServer V4.08",
-  note: "SetupTool V3.16 与 IPPServer V4.08 修改了温度补偿映射关系，必须同时升级。旧版温度补偿表升级后要重新设置；未使能温度补偿时可正常使用。",
+  note: "温度补偿映射从 SetupTool V3.16 起已改，必须与 IPPServer V4.08 同时升级。本机调试软件是 V3.33，通道在 config.xml 的温度采集通道1–16。旧表要重设；未使能温度补偿可照常使用。",
 }

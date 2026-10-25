@@ -8,6 +8,7 @@ import { formatMm, type Axis } from "@/lib/geom"
 import { applyPoint, invert } from "@/lib/math/transform"
 import { MACC_TEMP_PAIRING } from "@/lib/macc/errors"
 import { DEFAULT_MACC_BRIDGE } from "@/lib/macc/protocol"
+import { setupToolSummary } from "@/lib/macc/setuptool"
 import { palletToMachineOf, partFrameOf, useCmmStore, type DroFrame } from "@/lib/store"
 import { Home, RotateCcw } from "lucide-react"
 import { useState } from "react"
@@ -50,6 +51,7 @@ export function MotionPanel() {
   const disconnectMacc = useCmmStore((s) => s.disconnectMacc)
   const setDriveHardware = useCmmStore((s) => s.setDriveHardware)
   const setMaccTemperatureComp = useCmmStore((s) => s.setMaccTemperatureComp)
+  const setupTool = useCmmStore((s) => s.setupTool)
   const [bridgeUrl, setBridgeUrl] = useState(macc.bridgeUrl || DEFAULT_MACC_BRIDGE)
 
   const frame =
@@ -193,6 +195,11 @@ export function MotionPanel() {
           使能控制器温度补偿
         </label>
         <p className="mt-1 text-[10px] leading-snug text-amber-600 dark:text-amber-400">{MACC_TEMP_PAIRING.note}</p>
+        <p className="mt-1 text-[10px] text-muted-foreground">
+          {setupTool
+            ? setupToolSummary(setupTool)
+            : "可从程序面板导入 SetupTool V3.33 的 Config/config.xml"}
+        </p>
       </div>
 
       <div className="min-h-0 flex-1 border-t">

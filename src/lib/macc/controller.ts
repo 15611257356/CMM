@@ -44,6 +44,14 @@ export class MaccBridgeController implements MotionController {
   private telemetry: MaccTelemetry = emptyTelemetry()
   private jogging = false
   private mode: MotionSnapshot["mode"] = "idle"
+  /** SetupTool V3.33 出厂：回退 3 mm，回退速度 10 mm/s */
+  private retractMm = 3
+  private retractSpeed = 10
+
+  setMeasureParams(params: { retractMm?: number; retractSpeed?: number }): void {
+    if (params.retractMm !== undefined) this.retractMm = params.retractMm
+    if (params.retractSpeed !== undefined) this.retractSpeed = params.retractSpeed
+  }
 
   getTelemetry(): MaccTelemetry {
     return { ...this.telemetry }
@@ -171,7 +179,7 @@ export class MaccBridgeController implements MotionController {
     this.emit()
     await this.ok("MACC_disable_joystick")
     await this.ok("MACC_enable_probe")
-    await this.ok("MACC_set_retract_parameter", [Math.max(speedMmPerSec, 0.5), 2])
+    await this.ok("MACC_set_retract_parameter", [this.retractSpeed, this.retractMm])
     await this.ok("MACC_touch_move", [speedMmPerSec, maxTravel, xyzArray(target), xyzArray(direction)])
     await this.waitUntil(() => {
       const m = parseMotionStatus(this.telemetry.motionStatus)

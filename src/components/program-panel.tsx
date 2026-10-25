@@ -55,7 +55,7 @@ export function ProgramPanel() {
           <input
             ref={fileRef}
             type="file"
-            accept=".dms,.dmi,.txt,.csv,.dat,.rpt,.out"
+            accept=".dms,.dmi,.txt,.csv,.dat,.rpt,.out,.xml"
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0]

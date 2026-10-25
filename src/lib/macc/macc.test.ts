@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { maccErrorMessage, maccOk, MACC_TEMP_PAIRING } from "@/lib/macc/errors"
+import { detectAndParse } from "@/lib/super-dmis/import-file"
+import { parseSetupToolConfig, uintToIpv4 } from "@/lib/macc/setuptool"
 import { decodeIpp, encodeIpp, ippGoTo, ippHome, ippPtMeas } from "@/lib/macc/iplusplus"
 import { sphereLocateStart, SPHERE_LOCATE_CLEARANCE_MM } from "@/lib/macc/probe-qualify"
 import { MOTION_ESTOP, MOTION_TOUCHING, parseAxisHomed, parseMotionStatus } from "@/lib/macc/status"
@@ -11,8 +13,8 @@ describe("MACC 返回码", () => {
     expect(maccErrorMessage(4435)).toContain("搜索失败")
   })
 
-  it("温度补偿必须配套 SetupTool 3.16 与 IPPServer 4.08", () => {
-    expect(MACC_TEMP_PAIRING.setupTool).toContain("3.16")
+  it("温度补偿必须配套 SetupTool 3.33 与 IPPServer 4.08", () => {
+    expect(MACC_TEMP_PAIRING.setupTool).toContain("3.33")
     expect(MACC_TEMP_PAIRING.ippServer).toContain("4.08")
   })
 })
@@ -29,6 +31,39 @@ describe("状态字", () => {
   it("三轴 bit11 都置位才算已回零", () => {
     expect(parseAxisHomed([0x0800, 0x0800, 0x0800])).toBe(true)
     expect(parseAxisHomed([0x0800, 0, 0x0800])).toBe(false)
+  })
+})
+
+describe("SetupTool V3.33 config.xml", () => {
+  const sample = `<?xml version="1.0" encoding="utf-8"?>
+<Configuration Axis="5" ControllerType="MACC3000">
+  <NetConfig Name="网络参数">
+    <key Name="控制器IP地址" Value="2147483657" ValType="uint" />
+    <key Name="控制器子网掩码" Value="4294901760" ValType="uint" />
+    <key Name="控制器网关地址" Value="2147483649" ValType="uint" />
+    <key Name="控制器通讯端口" Value="10000" ValType="ushort" />
+  </NetConfig>
+  <MeasurePara>
+    <key Name="回退距离" Value="3.000000" Unit="mm" />
+    <key Name="回退速度" Value="10.000000" Unit="mm/s" />
+    <key Name="搜索距离默认值" Value="2.000000" Unit="mm" />
+    <key Name="默认测量速度" Value="5.000000" Unit="mm/s" />
+    <key Name="默认定位速度" Value="150.000000" Unit="mm/s" />
+    <key Name="温度补偿使能" Value="2" />
+    <key Name="温度采集通道1" Value="3" />
+  </MeasurePara>
+</Configuration>`
+
+  it("把出厂 uint IP 解成 128.0.0.9:10000，并读回退/搜索", () => {
+    expect(uintToIpv4(2147483657)).toBe("128.0.0.9")
+    const p = parseSetupToolConfig(sample)
+    expect(p.controllerType).toBe("MACC3000")
+    expect(p.ip).toBe("128.0.0.9")
+    expect(p.port).toBe(10000)
+    expect(p.retractMm).toBe(3)
+    expect(p.searchMm).toBe(2)
+    expect(p.temperatureChannels[0]).toBe(3)
+    expect(detectAndParse(sample, "config.xml").kind).toBe("setuptool")
   })
 })
 

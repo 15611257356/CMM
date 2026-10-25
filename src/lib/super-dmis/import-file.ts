@@ -1,3 +1,4 @@
+import { isSetupToolConfig, parseSetupToolConfig, type SetupToolProfile } from "@/lib/macc/setuptool"
 import { compensatePoint, emptyGeom21, type Geom21 } from "@/lib/super-dmis/geom21"
 import { parseStepGaugeDat, type StepGaugeTruth } from "@/lib/super-dmis/parse-dat"
 import { parseMeasurementFile, type MeasurementImport } from "@/lib/super-dmis/parse-hits"
@@ -7,9 +8,13 @@ export type DetectedImport =
   | { kind: "measurement"; data: MeasurementImport }
   | { kind: "nonlinear"; data: Geom21 }
   | { kind: "step-gauge"; data: StepGaugeTruth }
+  | { kind: "setuptool"; data: SetupToolProfile }
 
 export function detectAndParse(text: string, filename = ""): DetectedImport {
   const lower = filename.toLowerCase()
+  if (isSetupToolConfig(text, filename)) {
+    return { kind: "setuptool", data: parseSetupToolConfig(text) }
+  }
   if (lower.endsWith(".dat") && !/dmis/i.test(text)) {
     return { kind: "step-gauge", data: parseStepGaugeDat(text) }
   }

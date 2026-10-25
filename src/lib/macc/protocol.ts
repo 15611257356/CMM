@@ -7,6 +7,9 @@ import type { Axis, Vec3 } from "@/lib/geom"
  * 默认地址 ws://127.0.0.1:17652/macc
  */
 export const DEFAULT_MACC_BRIDGE = "ws://127.0.0.1:17652/macc"
+/** SetupTool V3.33 config.xml 出厂值：控制器以太网 TCP 10000，地址 128.0.0.9 */
+export const DEFAULT_MACC_CONTROLLER_PORT = 10000
+export const DEFAULT_MACC_CONTROLLER_IP = "128.0.0.9"
 
 export type MaccMethod =
   | "MACC_initial"
