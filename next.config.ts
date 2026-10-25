@@ -6,6 +6,10 @@ const nextConfig: NextConfig = {
   // 静态导出，供 GitHub Pages 长期托管。本地 `next dev` 不受影响。
   output: "export",
   basePath,
+  // Worker 和 fetch 不会自动带上 basePath，页面里用这个前缀拼 public/ 地址。
+  env: {
+    NEXT_PUBLIC_BASE_PATH: basePath ?? "",
+  },
   // Cloudflare quick tunnels change hostnames; the wildcard keeps the preview
   // able to load dev chunks and hydrate (otherwise the 3D view stays on its fallback).
   allowedDevOrigins: ["127.0.0.1", "localhost", "*.trycloudflare.com"],

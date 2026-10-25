@@ -2,6 +2,7 @@ import { buildModel } from "@/lib/model/mesh"
 import { modelFromOcct, OCCT_PARAMS, type OcctResult } from "@/lib/model/occt"
 import { parseObj, parseStl } from "@/lib/model/parse-mesh"
 import type { ModelFormat, PartModel } from "@/lib/model/types"
+import { publicUrl } from "@/lib/public-url"
 
 export const MODEL_ACCEPT = ".step,.stp,.iges,.igs,.stl,.obj"
 
@@ -17,7 +18,7 @@ export function modelFormatOf(filename: string): ModelFormat | null {
 /** OpenCascade（wasm）在 Worker 里三角化，避免大模型卡住界面。 */
 function readBrepInWorker(format: "step" | "iges", buffer: ArrayBuffer): Promise<OcctResult> {
   return new Promise((resolve, reject) => {
-    const worker = new Worker("/occt/step-worker.js")
+    const worker = new Worker(publicUrl("/occt/step-worker.js"))
     const timer = setTimeout(() => {
       worker.terminate()
       reject(new Error("STEP 解析超时（60 s）"))

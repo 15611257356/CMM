@@ -64,6 +64,7 @@ import { compensateImport, detectAndParse } from "@/lib/super-dmis/import-file"
 import type { StepGaugeTruth } from "@/lib/super-dmis/parse-dat"
 import { matchImportedHits, programFromImport } from "@/lib/super-dmis/parse-hits"
 import { tableSummary } from "@/lib/super-dmis/parse-nonlinear"
+import { publicUrl } from "@/lib/public-url"
 import { createTruth, segmentClearance, simulateTouch, type SimTruth } from "@/lib/sim/world"
 import { HardwareCameraDriver } from "@/lib/vision/camera"
 import { detectCircles, imageDataFromUrl } from "@/lib/vision/detect"
@@ -80,7 +81,7 @@ const GEOM21_KEY = "yujian-geom21-v1"
 const ORIENTATION_KEY = "yujian-model-orientation-v1"
 const IPP_KEY = "yujian-ipp-v1"
 
-export const SAMPLE_MODEL_URL = "/samples/locating-block-lb02.step"
+export const SAMPLE_MODEL_URL = publicUrl("/samples/locating-block-lb02.step")
 
 type Prefs = {
   inspectMode: InspectMode
