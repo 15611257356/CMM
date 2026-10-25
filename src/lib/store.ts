@@ -8,6 +8,7 @@ import {
   PALLET,
   PROBE,
   nominalPartToMachine,
+  probeTravelsForRun,
 } from "@/lib/machine/setup"
 import { applyPoint, invert, type RigidTransform } from "@/lib/math/transform"
 import { MaccBridgeController } from "@/lib/macc/controller"
@@ -214,8 +215,12 @@ export const useCmmStore = create<AppState>((set, get) => {
     placement,
     clearanceZ,
     tipRadius: tipRadiusOf(get()),
-    retract: get().setupTool?.retractMm ?? PROBE.retract,
-    searchTravel: get().setupTool?.searchMm ?? PROBE.searchTravel,
+    ...probeTravelsForRun({
+      driveHardware: get().driveHardware,
+      maccConnected: get().macc.connected,
+      retractMm: get().setupTool?.retractMm,
+      searchMm: get().setupTool?.searchMm,
+    }),
     rapidSpeed: get().rapidSpeed,
     measureSpeed: get().measureSpeed,
     probeSpeed: get().probeSpeed,
@@ -671,7 +676,7 @@ export const useCmmStore = create<AppState>((set, get) => {
           })
           get().log(
             "info",
-            `已导入 SetupTool ${setupToolSummary(setupTool)}。工控机桥接连控制器时用该 IP/端口。温度通道 ${setupTool.temperatureChannels.filter((c) => c).length}/16 已映射`
+            `已导入 SetupTool ${setupToolSummary(setupTool)}。工控机桥接连控制器时用该 IP/端口。仿真仍用 ${PROBE.searchTravel} mm 搜索行程。温度通道 ${setupTool.temperatureChannels.filter((c) => c).length}/16 已映射`
           )
           return
         }
