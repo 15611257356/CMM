@@ -104,6 +104,8 @@ export function ProgramPanel() {
                               <Badge variant="secondary" className="text-teal-700 dark:text-teal-300">
                                 完成
                               </Badge>
+                            ) : result.error?.includes("导入") || result.error === "测点不足" ? (
+                              <Badge variant="outline">未测</Badge>
                             ) : (
                               <Badge variant="destructive">失败</Badge>
                             )
