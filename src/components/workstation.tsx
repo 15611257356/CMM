@@ -1,6 +1,7 @@
 "use client"
 
 import { CoordsPanel } from "@/components/coords-panel"
+import { ModelToolbar } from "@/components/model-toolbar"
 import { MotionPanel } from "@/components/motion-panel"
 import { NcPanel } from "@/components/nc-panel"
 import { ProgramPanel } from "@/components/program-panel"
@@ -17,9 +18,7 @@ import { useEffect } from "react"
 
 const CmmScene = dynamic(() => import("@/components/cmm-scene").then((m) => m.CmmScene), {
   ssr: false,
-  loading: () => (
-    <div className="flex h-full items-center justify-center text-sm text-muted-foreground">加载 3D 机床…</div>
-  ),
+  loading: () => <div className="flex h-full items-center justify-center text-sm text-muted-foreground">加载 3D 机床…</div>,
 })
 
 function HeaderBar() {
@@ -29,6 +28,8 @@ function HeaderBar() {
   const estop = useCmmStore((s) => s.motion.estop)
   const homed = useCmmStore((s) => s.motion.homed)
   const calibrated = useCmmStore((s) => Boolean(s.calibration))
+  const channel = useCmmStore((s) => s.hardwareChannel)
+  const liveHardware = useCmmStore((s) => s.driveHardware && (s.hardwareChannel === "ipp" ? s.ipp.connected : s.macc.connected))
   const runProgram = useCmmStore((s) => s.runProgram)
   const calibratePallet = useCmmStore((s) => s.calibratePallet)
   const loadNewPart = useCmmStore((s) => s.loadNewPart)
@@ -43,14 +44,14 @@ function HeaderBar() {
           <Link href="/" className="text-sm font-semibold tracking-tight hover:underline sm:text-base">
             预检机 · 预调测量
           </Link>
-          <Badge variant="secondary">仿真模式</Badge>
+          <Badge variant={liveHardware ? "destructive" : "secondary"}>
+            {liveHardware ? `真机 · ${channel === "ipp" ? "I++" : "MACC"}` : "仿真模式"}
+          </Badge>
           {!homed ? <Badge variant="destructive">未回零</Badge> : null}
           <Badge variant={calibrated ? "outline" : "destructive"}>{calibrated ? "托盘/测针已标定" : "未标定"}</Badge>
           {running ? <Badge>{runLabel}中</Badge> : null}
         </div>
-        <p className="hidden text-xs text-muted-foreground sm:block">
-          SuperDMIS · IPPServer I++ · MACC 控制器 · 本机找正与 G54
-        </p>
+        <p className="hidden text-xs text-muted-foreground sm:block">SuperDMIS · IPPServer I++ · MACC 控制器 · 本机找正与 G54</p>
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
         <Button size="sm" variant="outline" onClick={loadNewPart} disabled={running}>
@@ -89,8 +90,9 @@ const CENTER_TABS: { value: CenterView; label: string }[] = [
 function CenterContent({ view }: { view: CenterView }) {
   if (view === "machine") {
     return (
-      <div className="h-full min-h-[300px]">
+      <div className="relative h-full min-h-[300px]">
         <CmmScene />
+        <ModelToolbar />
       </div>
     )
   }

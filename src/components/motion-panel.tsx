@@ -7,6 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { formatMm, type Axis } from "@/lib/geom"
 import { applyPoint, invert } from "@/lib/math/transform"
 import { MACC_TEMP_PAIRING } from "@/lib/macc/errors"
+import { DEFAULT_IPP_RELAY } from "@/lib/ipp/controller"
 import { DEFAULT_MACC_BRIDGE } from "@/lib/macc/protocol"
 import { setupToolSummary } from "@/lib/macc/setuptool"
 import { palletToMachineOf, partFrameOf, useCmmStore, type DroFrame } from "@/lib/store"
@@ -36,6 +37,7 @@ export function MotionPanel() {
   const setDro = useCmmStore((s) => s.setDro)
   const calibration = useCmmStore((s) => s.calibration)
   const evaluation = useCmmStore((s) => s.evaluation)
+  const nominalOnPallet = useCmmStore((s) => s.nominalOnPallet)
   const jogSpeed = useCmmStore((s) => s.jogSpeed)
   const setJogSpeed = useCmmStore((s) => s.setJogSpeed)
   const startJog = useCmmStore((s) => s.startJog)
@@ -53,13 +55,22 @@ export function MotionPanel() {
   const setMaccTemperatureComp = useCmmStore((s) => s.setMaccTemperatureComp)
   const setupTool = useCmmStore((s) => s.setupTool)
   const [bridgeUrl, setBridgeUrl] = useState(macc.bridgeUrl || DEFAULT_MACC_BRIDGE)
+  const channel = useCmmStore((s) => s.hardwareChannel)
+  const setHardwareChannel = useCmmStore((s) => s.setHardwareChannel)
+  const ipp = useCmmStore((s) => s.ipp)
+  const ippBusy = useCmmStore((s) => s.ippBusy)
+  const connectIpp = useCmmStore((s) => s.connectIpp)
+  const disconnectIpp = useCmmStore((s) => s.disconnectIpp)
+  const ippSurfacePoint = useCmmStore((s) => s.ippSurfacePoint)
+  const setIppSurfacePoint = useCmmStore((s) => s.setIppReturnsSurfacePoint)
+  const [ippUrl, setIppUrl] = useState(ipp.url || DEFAULT_IPP_RELAY)
 
   const frame =
     dro === "machine"
       ? null
       : dro === "pallet"
         ? palletToMachineOf({ calibration })
-        : partFrameOf({ calibration, evaluation })
+        : partFrameOf({ calibration, evaluation, nominalOnPallet })
   const shown = frame ? applyPoint(invert(frame), motion.position) : motion.position
   const disabled = running || motion.estop
 
@@ -90,12 +101,19 @@ export function MotionPanel() {
           <p className="mt-1 text-[10px] text-amber-600 dark:text-amber-400">零件坐标系未找正，当前按理论装夹显示</p>
         ) : null}
         <div className="mt-2 flex flex-wrap gap-1.5">
-          <Badge variant={driveHardware ? "default" : "secondary"}>{driveHardware ? "MACC 真机" : "仿真控制器"}</Badge>
-          <Badge variant={macc.connected ? "default" : "outline"}>{macc.connected ? "MACC 在线" : "MACC 未连接"}</Badge>
+          <Badge variant={driveHardware ? "default" : "secondary"}>
+            {driveHardware ? (channel === "ipp" ? "I++ 真机" : "MACC 真机") : "仿真控制器"}
+          </Badge>
           {motion.homed ? <Badge variant="outline">已回零</Badge> : <Badge variant="destructive">未回零</Badge>}
           {motion.estop ? <Badge variant="destructive">急停锁定</Badge> : null}
           {motion.overtravel ? <Badge variant="destructive">{motion.overtravel.toUpperCase()} 超程</Badge> : null}
-          {motion.mode === "probe" ? <Badge>触测</Badge> : motion.moving ? <Badge>运动中</Badge> : <Badge variant="outline">静止</Badge>}
+          {motion.mode === "probe" ? (
+            <Badge>触测</Badge>
+          ) : motion.moving ? (
+            <Badge>运动中</Badge>
+          ) : (
+            <Badge variant="outline">静止</Badge>
+          )}
         </div>
       </div>
 
@@ -134,7 +152,13 @@ export function MotionPanel() {
           ))}
         </div>
         <div className="mt-2 flex gap-1.5">
-          <Button size="sm" variant={motion.homed ? "secondary" : "default"} className="flex-1" disabled={disabled} onClick={() => void home()}>
+          <Button
+            size="sm"
+            variant={motion.homed ? "secondary" : "default"}
+            className="flex-1"
+            disabled={disabled}
+            onClick={() => void home()}
+          >
             <Home data-icon="inline-start" />
             回零
           </Button>
@@ -146,59 +170,120 @@ export function MotionPanel() {
       </div>
 
       <div className="border-t px-3 py-2">
-        <p className="mb-1 text-[11px] text-muted-foreground">力合 MACC / IPPServer</p>
-        <input
-          value={bridgeUrl}
-          onChange={(e) => setBridgeUrl(e.target.value)}
-          className="mb-1.5 h-8 w-full rounded-lg border border-input bg-transparent px-2 font-mono text-xs"
-          spellCheck={false}
-        />
-        <div className="flex flex-wrap gap-1.5">
-          {macc.connected ? (
-            <Button size="xs" variant="outline" onClick={disconnectMacc} disabled={maccBusy}>
-              断开
-            </Button>
-          ) : (
-            <Button size="xs" onClick={() => void connectMacc(bridgeUrl)} disabled={maccBusy}>
-              {maccBusy ? "连接中…" : "连接桥接"}
-            </Button>
-          )}
+        <div className="mb-1.5 flex items-center justify-between">
+          <p className="text-[11px] text-muted-foreground">真机通道</p>
+          <div className="flex gap-0.5 rounded-lg bg-muted p-0.5">
+            {(
+              [
+                ["ipp", "IPPServer (I++)"],
+                ["macc", "MACC 桥接"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                disabled={running}
+                onClick={() => setHardwareChannel(value)}
+                className={`rounded-md px-2 py-0.5 text-[11px] ${channel === value ? "bg-background shadow-sm" : "text-muted-foreground"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
-        {macc.connected ? (
-          <dl className="mt-2 grid grid-cols-2 gap-x-2 gap-y-0.5 font-mono text-[11px] text-muted-foreground">
-            <dt>序列号</dt>
-            <dd className="truncate">{macc.serial || "—"}</dd>
-            <dt>固件 F/D</dt>
-            <dd className="truncate">
-              {macc.firmwareF || "—"} / {macc.firmwareD || "—"}
-            </dd>
-            <dt>工件温度</dt>
-            <dd>{macc.partTempC === null ? "—" : `${macc.partTempC.toFixed(2)} °C`}</dd>
-          </dl>
-        ) : null}
+        {channel === "ipp" ? (
+          <>
+            <input
+              value={ippUrl}
+              onChange={(e) => setIppUrl(e.target.value)}
+              className="mb-1.5 h-8 w-full rounded-lg border border-input bg-transparent px-2 font-mono text-xs"
+              spellCheck={false}
+            />
+            <div className="flex flex-wrap items-center gap-1.5">
+              {ipp.connected ? (
+                <Button size="xs" variant="outline" onClick={disconnectIpp} disabled={ippBusy}>
+                  断开
+                </Button>
+              ) : (
+                <Button size="xs" onClick={() => void connectIpp(ippUrl)} disabled={ippBusy}>
+                  {ippBusy ? "连接中…" : "连接 IPPServer"}
+                </Button>
+              )}
+              <Badge variant={ipp.connected ? "default" : "outline"}>{ipp.connected ? "I++ 在线" : "I++ 未连接"}</Badge>
+              {ipp.connected ? (
+                <Badge variant={ipp.homed ? "outline" : "destructive"}>{ipp.homed ? "已回零" : "未回零"}</Badge>
+              ) : null}
+            </div>
+            <label className="mt-2 flex items-center gap-2 text-xs">
+              <input type="checkbox" checked={ippSurfacePoint} onChange={(e) => setIppSurfacePoint(e.target.checked)} />
+              PtMeas 返回已补偿测针半径的表面点
+            </label>
+            {ipp.lastError ? <p className="mt-1 text-[10px] text-destructive">{ipp.lastError}</p> : null}
+            {ipp.traffic.length ? (
+              <pre className="mt-1.5 max-h-28 overflow-y-auto rounded-md bg-muted/70 p-1.5 font-mono text-[10px] leading-snug whitespace-pre-wrap">
+                {ipp.traffic.slice(-10).join("\n")}
+              </pre>
+            ) : (
+              <p className="mt-1 text-[10px] leading-snug text-muted-foreground">
+                工控机上打开 IPPServer（端口 1294），再运行 <code>node tools/ipp-relay.mjs</code> 把浏览器 WebSocket 转成 TCP。
+                没有机床时用 <code>node tools/ipp-mock-server.mjs</code> 联调。
+              </p>
+            )}
+          </>
+        ) : (
+          <>
+            <input
+              value={bridgeUrl}
+              onChange={(e) => setBridgeUrl(e.target.value)}
+              className="mb-1.5 h-8 w-full rounded-lg border border-input bg-transparent px-2 font-mono text-xs"
+              spellCheck={false}
+            />
+            <div className="flex flex-wrap gap-1.5">
+              {macc.connected ? (
+                <Button size="xs" variant="outline" onClick={disconnectMacc} disabled={maccBusy}>
+                  断开
+                </Button>
+              ) : (
+                <Button size="xs" onClick={() => void connectMacc(bridgeUrl)} disabled={maccBusy}>
+                  {maccBusy ? "连接中…" : "连接桥接"}
+                </Button>
+              )}
+            </div>
+            {macc.connected ? (
+              <dl className="mt-2 grid grid-cols-2 gap-x-2 gap-y-0.5 font-mono text-[11px] text-muted-foreground">
+                <dt>序列号</dt>
+                <dd className="truncate">{macc.serial || "—"}</dd>
+                <dt>固件 F/D</dt>
+                <dd className="truncate">
+                  {macc.firmwareF || "—"} / {macc.firmwareD || "—"}
+                </dd>
+                <dt>工件温度</dt>
+                <dd>{macc.partTempC === null ? "—" : `${macc.partTempC.toFixed(2)} °C`}</dd>
+              </dl>
+            ) : null}
+            <label className="mt-1 flex items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={macc.temperatureComp}
+                disabled={!macc.connected}
+                onChange={(e) => void setMaccTemperatureComp(e.target.checked)}
+              />
+              使能控制器温度补偿
+            </label>
+            <p className="mt-1 text-[10px] leading-snug text-amber-600 dark:text-amber-400">{MACC_TEMP_PAIRING.note}</p>
+          </>
+        )}
         <label className="mt-2 flex items-center gap-2 text-xs">
           <input
             type="checkbox"
             checked={driveHardware}
-            disabled={!macc.connected}
+            disabled={channel === "ipp" ? !ipp.connected : !macc.connected}
             onChange={(e) => setDriveHardware(e.target.checked)}
           />
-          点动/回零/自动运行走真机（未勾选仍是仿真）
+          回零/自动运行走真机（未勾选仍是仿真）
         </label>
-        <label className="mt-1 flex items-center gap-2 text-xs">
-          <input
-            type="checkbox"
-            checked={macc.temperatureComp}
-            disabled={!macc.connected}
-            onChange={(e) => void setMaccTemperatureComp(e.target.checked)}
-          />
-          使能控制器温度补偿
-        </label>
-        <p className="mt-1 text-[10px] leading-snug text-amber-600 dark:text-amber-400">{MACC_TEMP_PAIRING.note}</p>
         <p className="mt-1 text-[10px] text-muted-foreground">
-          {setupTool
-            ? setupToolSummary(setupTool)
-            : "可从程序面板导入 SetupTool V3.33 的 Config/config.xml"}
+          {setupTool ? setupToolSummary(setupTool) : "可从程序面板导入 VCC 调试软件 V3.41 / SetupTool V3.33 的 Config/config.xml"}
         </p>
       </div>
 
@@ -212,7 +297,8 @@ export function MotionPanel() {
               <li className="flex justify-between gap-2">
                 <span>装夹偏差 X/Y/Z</span>
                 <span className="font-mono text-muted-foreground">
-                  {evaluation.pallet.delta.x.toFixed(3)} / {evaluation.pallet.delta.y.toFixed(3)} / {evaluation.pallet.delta.z.toFixed(3)}
+                  {evaluation.pallet.delta.x.toFixed(3)} / {evaluation.pallet.delta.y.toFixed(3)} /{" "}
+                  {evaluation.pallet.delta.z.toFixed(3)}
                 </span>
               </li>
               <li className="flex justify-between gap-2">

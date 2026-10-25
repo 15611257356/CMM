@@ -66,6 +66,8 @@ export type MeasurementProgram = {
   steps: ProgramStep[]
   gdt: GdtCheck[]
   alignment?: AlignmentDef
+  /** 测点取自哪个 CAD 模型（文件名）；刷新后恢复模型时据此决定是否保留程序。 */
+  modelName?: string
 }
 
 export type ProbeHit = {

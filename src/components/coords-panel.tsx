@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { WORK_OFFSETS, workOffsetFromPose, workOffsetNc, type WorkOffsetCode } from "@/lib/coords/work-offset"
-import { NOMINAL_PART_ON_PALLET, PALLET } from "@/lib/machine/setup"
+import { PALLET } from "@/lib/machine/setup"
 import { toPoseDeg, type PoseDeg } from "@/lib/math/transform"
 import { geom21IsIdentity } from "@/lib/super-dmis/geom21"
 import { tableSummary } from "@/lib/super-dmis/parse-nonlinear"
@@ -111,8 +111,9 @@ export function CoordsPanel() {
   const setGeom21 = useCmmStore((s) => s.setGeom21)
   const clearGeom21 = useCmmStore((s) => s.clearGeom21)
   const stepGauge = useCmmStore((s) => s.stepGauge)
+  const nominalOnPallet = useCmmStore((s) => s.nominalOnPallet)
 
-  const nominal = toPoseDeg(NOMINAL_PART_ON_PALLET)
+  const nominal = toPoseDeg(nominalOnPallet)
   const offset = evaluation ? workOffsetFromPose(evaluation.pallet.actual, machineTool) : null
   const ncText = offset ? workOffsetNc(offset, withRotation) : ""
   const truthDelta: PoseDeg = {
