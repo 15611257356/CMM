@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Configuration Axis="4" ControllerType="VCC3500">
+        <key Name="X轴编码器分辨率" Serie="-" Version="-" Index="10D5" BitIndex="-" Value="0.001000" ValType="double" OptType="读写" ValueRange="0.000001,0.1" Ignore="N" Unit="mm/count" DefaultValue="0.00005" Jog="2" />
+        <key Name="X轴正向软限位坐标" Serie="-" Version="-" Index="1604" BitIndex="-" Value="4.531000" ValType="double" OptType="读写" ValueRange="0,10000" Ignore="N" Unit="mm" DefaultValue="200" Jog="0" />
+        <key Name="X轴负向软限位坐标" Serie="-" Version="-" Index="1605" BitIndex="-" Value="-300.000000" ValType="double" OptType="读写" ValueRange="-10000,10000" Ignore="N" Unit="mm" DefaultValue="-200" Jog="0" />
+        <key Name="Y轴编码器分辨率" Serie="-" Version="-" Index="20D5" BitIndex="-" Value="0.000500" ValType="double" OptType="读写" ValueRange="0.000001,0.1" Ignore="N" Unit="mm/count" DefaultValue="0.00005" Jog="2" />
+        <key Name="Y轴正向软限位坐标" Serie="-" Version="-" Index="2604" BitIndex="-" Value="4.291000" ValType="double" OptType="读写" ValueRange="0,10000" Ignore="N" Unit="mm" DefaultValue="200" Jog="0" />
+        <key Name="Y轴负向软限位坐标" Serie="-" Version="-" Index="2605" BitIndex="-" Value="-60.000000" ValType="double" OptType="读写" ValueRange="-10000,10000" Ignore="N" Unit="mm" DefaultValue="-200" Jog="0" />
+        <key Name="Z轴编码器分辨率" Serie="-" Version="-" Index="30D5" BitIndex="-" Value="0.000500" ValType="double" OptType="读写" ValueRange="0.000001,0.1" Ignore="N" Unit="mm/count" DefaultValue="0.00005" Jog="2" />
+        <key Name="Z轴正向软限位坐标" Serie="-" Version="-" Index="3604" BitIndex="-" Value="4.531000" ValType="double" OptType="读写" ValueRange="0,10000" Ignore="N" Unit="mm" DefaultValue="200" Jog="0" />
+        <key Name="Z轴负向软限位坐标" Serie="-" Version="-" Index="3605" BitIndex="-" Value="-20.000000" ValType="double" OptType="读写" ValueRange="-10000,10000" Ignore="N" Unit="mm" DefaultValue="-200" Jog="0" />
+    <key Name="控制器IP地址" Serie="-" Version="-" Index="0031" BitIndex="-" Value="2147483657" ValType="uint" EnumValue="" OptType="读写" ValueRange="-" Ignore="N" Unit="-" DefaultValue="‭‭2147483657‬‬" />
+    <key Name="控制器子网掩码" Serie="-" Version="-" Index="0032" BitIndex="-" Value="4294901760" ValType="uint" EnumValue="" OptType="读写" ValueRange="-" Ignore="N" Unit="-" DefaultValue="‭4294901760‬‬" />
+    <key Name="控制器网关地址" Serie="-" Version="-" Index="0033" BitIndex="-" Value="2147483649" ValType="uint" EnumValue="" OptType="读写" ValueRange="-" Ignore="N" Unit="-" DefaultValue="‭2147483649‬" />
+    <key Name="控制器通讯端口" Serie="-" Version="-" Index="0034" BitIndex="-" Value="10000" ValType="ushort" EnumValue="" OptType="读写" ValueRange="10000,65535" Ignore="N" Unit="-" DefaultValue="10000" />
+      <key Name="回退距离" Serie="-" Version="-" Index="0302" BitIndex="-" Value="2.000000" ValType="double" EnumValue="" OptType="读写" ValueRange="-" Ignore="N" Unit="mm" DefaultValue="10‬" />
+      <key Name="回退速度" Serie="-" Version="-" Index="0303" BitIndex="-" Value="40.000000" ValType="double" EnumValue="" OptType="读写" ValueRange="-" Ignore="N" Unit="mm/s" DefaultValue="10" />
+      <key Name="搜索距离默认值" Serie="-" Version="-" Index="0314" BitIndex="-" Value="20.000000" ValType="double" EnumValue="" OptType="读写" ValueRange="-" Ignore="N" Unit="mm" DefaultValue="20‬" />
+      <key Name="默认接近距离" Serie="-" Version="-" Index="0317" BitIndex="-" Value="10.000000" ValType="double" EnumValue="" OptType="读写" ValueRange="-" Ignore="N" Unit="mm" DefaultValue="10‬" />
+      <key Name="默认测量速度" Serie="-" Version="-" Index="031A" BitIndex="-" Value="5.000000" ValType="double" EnumValue="" OptType="读写" ValueRange="-" Ignore="N" Unit="mm/s" DefaultValue="5‬" />
+      <key Name="默认定位速度" Serie="-" Version="-" Index="031D" BitIndex="-" Value="50.000000" ValType="double" EnumValue="" OptType="读写" ValueRange="-" Ignore="N" Unit="mm/s" DefaultValue="50‬" />
+</Configuration>

@@ -27,6 +27,25 @@ export const PROBE = {
   clearanceAbovePart: 25,
 }
 
+/**
+ * SetupTool 出厂搜索只有 2 mm，只够真机贴面后的短行程。
+ * 仿真要从名义点外加装夹偏差去触表面，必须用软件默认行程，否则全部「未触发」。
+ */
+export function probeTravelsForRun(opts: {
+  driveHardware: boolean
+  maccConnected: boolean
+  retractMm?: number
+  searchMm?: number
+}): { retract: number; searchTravel: number } {
+  if (opts.driveHardware && opts.maccConnected) {
+    return {
+      retract: opts.retractMm ?? PROBE.retract,
+      searchTravel: opts.searchMm ?? PROBE.searchTravel,
+    }
+  }
+  return { retract: PROBE.retract, searchTravel: PROBE.searchTravel }
+}
+
 /** 示例零件：夹具底板，零件坐标系原点在前左上角（加工常用的对刀点）。 */
 export const PLATE = {
   name: "夹具底板 BP-01",
@@ -51,8 +70,11 @@ export const NOMINAL_PART_ON_PALLET: RigidTransform = fromPoseDeg({
   rx: 0,
 })
 
-export function nominalPartToMachine(palletToMachine: RigidTransform): RigidTransform {
-  return compose(palletToMachine, NOMINAL_PART_ON_PALLET)
+export function nominalPartToMachine(
+  palletToMachine: RigidTransform,
+  partOnPallet: RigidTransform = NOMINAL_PART_ON_PALLET
+): RigidTransform {
+  return compose(palletToMachine, partOnPallet)
 }
 
 export const DEFAULT_MACHINE_TOOL: MachineToolConfig = {

@@ -6,12 +6,18 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { formatMm } from "@/lib/geom"
+import { MODEL_ACCEPT, modelFormatOf } from "@/lib/model/load"
 import { GDT_LABEL, KIND_LABEL } from "@/lib/program/demo"
 import type { AlignmentDef, ProgramStep } from "@/lib/program/types"
 import { useCmmStore } from "@/lib/store"
-import { Circle, FileDown, Minus, Plus, Square, Trash2 } from "lucide-react"
+import { Circle, FileDown, FileUp, Minus, Plus, RotateCcw, Square, Trash2 } from "lucide-react"
+import { useRef } from "react"
 
-const ROLE_LABEL = { primary: "第一基准面", secondary: "第二基准线", origin: "原点" } as const
+const ROLE_LABEL = {
+  primary: "第一基准面",
+  secondary: "第二基准线",
+  origin: "原点",
+} as const
 
 export function ProgramPanel() {
   const program = useCmmStore((s) => s.program)
@@ -28,6 +34,12 @@ export function ProgramPanel() {
   const setTolerance = useCmmStore((s) => s.setTolerance)
   const inspectMode = useCmmStore((s) => s.inspectMode)
   const exportDmis = useCmmStore((s) => s.exportProgramDmis)
+  const resetDemo = useCmmStore((s) => s.resetDemoProgram)
+  const exportSuperDmis = useCmmStore((s) => s.exportSuperDmis)
+  const importExternalFile = useCmmStore((s) => s.importExternalFile)
+  const importModel = useCmmStore((s) => s.importModel)
+  const hasModel = useCmmStore((s) => Boolean(s.model))
+  const fileRef = useRef<HTMLInputElement>(null)
 
   const roleOf = (id: string) => {
     const a = program.alignment
@@ -42,7 +54,7 @@ export function ProgramPanel() {
           <p className="text-[11px] tracking-wide text-muted-foreground">自动编程（零件坐标）</p>
           <h2 className="truncate text-sm font-semibold">{program.name}</h2>
         </div>
-        <div className="flex gap-1">
+        <div className="flex shrink-0 flex-wrap justify-end gap-1">
           <Button
             size="xs"
             variant={inspectMode === "preset" ? "secondary" : "outline"}
@@ -61,12 +73,39 @@ export function ProgramPanel() {
           >
             复测
           </Button>
+          <Button size="xs" variant="outline" onClick={resetDemo} disabled={running}>
+            <RotateCcw data-icon="inline-start" />
+            示例
+          </Button>
+          <Button size="xs" variant="outline" onClick={exportSuperDmis} disabled={running || program.steps.length === 0}>
+            <FileDown data-icon="inline-start" />
+            SuperDMIS
+          </Button>
+          <Button size="xs" variant="outline" onClick={() => fileRef.current?.click()} disabled={running}>
+            <FileUp data-icon="inline-start" />
+            导入
+          </Button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept={`${MODEL_ACCEPT},.dms,.dmi,.txt,.csv,.dat,.rpt,.out,.xml`}
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              e.target.value = ""
+              if (!file) return
+              if (modelFormatOf(file.name)) void importModel(file)
+              else void importExternalFile(file)
+            }}
+          />
         </div>
       </div>
 
       {program.steps.length === 0 ? (
         <div className="mx-3 rounded-lg border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">
-          还没有测量步骤。加载示例程序，或从下方添加特征。
+          {hasModel
+            ? "在 3D 视图里点击模型上的面，自动生成测点和轨迹。"
+            : "还没有测量步骤。导入 STEP/STL 模型后在模型上点选，或加载示例程序。"}
         </div>
       ) : (
         <ScrollArea className="min-h-0 flex-1 px-2">
@@ -102,6 +141,8 @@ export function ProgramPanel() {
                               <Badge variant="secondary" className="text-teal-700 dark:text-teal-300">
                                 完成
                               </Badge>
+                            ) : result.error?.includes("导入") || result.error === "测点不足" ? (
+                              <Badge variant="outline">未测</Badge>
                             ) : (
                               <Badge variant="destructive">失败</Badge>
                             )
@@ -127,23 +168,24 @@ export function ProgramPanel() {
       )}
 
       <div className="border-t px-3 py-2">
+        <p className="mb-1.5 text-[11px] text-muted-foreground">
+          「导入」支持 STEP/IGES/STL 模型、SuperDMIS 测点、X-Inspect 非线性表、步距规 .dat 和 SetupTool config.xml；导出 DMIS 给
+          SuperDMIS。
+        </p>
         <p className="mb-1.5 text-[11px] text-muted-foreground">在测针当前位置添加特征</p>
         <div className="flex flex-wrap gap-1.5">
           <Button size="sm" variant="outline" disabled={running} onClick={() => addStep("point")}>
-            <Plus data-icon="inline-start" />
-            点
+            <Plus data-icon="inline-start" />点
           </Button>
           <Button size="sm" variant="outline" disabled={running} onClick={() => addStep("line")}>
-            <Minus data-icon="inline-start" />
-            边
+            <Minus data-icon="inline-start" />边
           </Button>
           <Button size="sm" variant="outline" disabled={running} onClick={() => addStep("plane")}>
             <Square data-icon="inline-start" />
             平面
           </Button>
           <Button size="sm" variant="outline" disabled={running} onClick={() => addStep("circle")}>
-            <Circle data-icon="inline-start" />
-            孔
+            <Circle data-icon="inline-start" />孔
           </Button>
           <Button size="sm" variant="ghost" disabled={program.steps.length === 0} onClick={exportDmis}>
             <FileDown data-icon="inline-start" />

@@ -9,10 +9,12 @@ import { WORK_OFFSETS, workOffsetFromPose, workOffsetNc, type WorkOffsetCode } f
 import { FIXED_FRAME_DRIFT_LIMIT } from "@/lib/program/evaluate"
 import { applyDialYaw } from "@/lib/program/indicator"
 import { MATERIALS, appliedThermal, type MaterialKey } from "@/lib/measure/thermal"
-import { NOMINAL_PART_ON_PALLET, PALLET } from "@/lib/machine/setup"
+import { PALLET } from "@/lib/machine/setup"
 import { toPoseDeg, type PoseDeg } from "@/lib/math/transform"
+import { geom21IsIdentity } from "@/lib/super-dmis/geom21"
+import { tableSummary } from "@/lib/super-dmis/parse-nonlinear"
 import { useCmmStore } from "@/lib/store"
-import { Copy, Crosshair } from "lucide-react"
+import { Copy, Crosshair, Trash2 } from "lucide-react"
 import type { ReactNode } from "react"
 
 function Section({ title, badge, children }: { title: string; badge?: ReactNode; children: ReactNode }) {
@@ -115,8 +117,15 @@ export function CoordsPanel() {
   const setUseDialYaw = useCmmStore((s) => s.setUseDialYaw)
   const partSerial = useCmmStore((s) => s.partSerial)
   const setPartSerial = useCmmStore((s) => s.setPartSerial)
+  const geom21 = useCmmStore((s) => s.geom21)
+  const applyGeomOnImport = useCmmStore((s) => s.applyGeomOnImport)
+  const setApplyGeomOnImport = useCmmStore((s) => s.setApplyGeomOnImport)
+  const setGeom21 = useCmmStore((s) => s.setGeom21)
+  const clearGeom21 = useCmmStore((s) => s.clearGeom21)
+  const stepGauge = useCmmStore((s) => s.stepGauge)
+  const nominalOnPallet = useCmmStore((s) => s.nominalOnPallet)
 
-  const nominal = toPoseDeg(NOMINAL_PART_ON_PALLET)
+  const nominal = toPoseDeg(nominalOnPallet)
   const pose = evaluation ? applyDialYaw(evaluation.pallet.actual, dialResult, useDialYaw) : null
   const offset = pose ? workOffsetFromPose(pose, machineTool) : null
   const heat = appliedThermal(thermal)
@@ -221,7 +230,60 @@ export function CoordsPanel() {
         </Section>
 
         <Section
-          title="② 零件坐标系（3-2-1 找正）"
+          title="② X-Inspect 21 项误差补偿"
+          badge={
+            geom21IsIdentity(geom21) ? (
+              <Badge variant="outline">未加载</Badge>
+            ) : (
+              <Badge variant="secondary">已加载</Badge>
+            )
+          }
+        >
+          <p className="mb-2 text-xs text-muted-foreground">
+            现场测量软件是 SuperDMIS BASIC，几何误差在 X-Inspect 里修。把 X-Inspect 的非线性表（RationalDMIS 或 Other
+            CSV）或步距规 .dat 从程序面板导入。光栅指示坐标按说明书：真值 = 指示值 ×（理论/实测），再减去非线性。
+          </p>
+          <div className="mb-2 grid grid-cols-3 gap-2 sm:grid-cols-6">
+            {(["x", "y", "z"] as const).map((axis) => (
+              <NumberField
+                key={axis}
+                id={`res-${axis}`}
+                label={`分辨率 ${axis.toUpperCase()}`}
+                value={geom21.resolution[axis]}
+                onChange={(v) => setGeom21({ resolution: { ...geom21.resolution, [axis]: v } })}
+              />
+            ))}
+            {(["xy", "xz", "yz"] as const).map((pair) => (
+              <NumberField
+                key={pair}
+                id={`sq-${pair}`}
+                label={`垂直度 ${pair.toUpperCase()} rad`}
+                value={geom21.squareness[pair]}
+                onChange={(v) => setGeom21({ squareness: { ...geom21.squareness, [pair]: v } })}
+              />
+            ))}
+          </div>
+          <p className="mb-2 font-mono text-[11px] text-muted-foreground">
+            非线性 X {tableSummary(geom21.x)} · Y {tableSummary(geom21.y)} · Z {tableSummary(geom21.z)}
+            {geom21.source ? ` · ${geom21.source}` : ""}
+            {stepGauge ? ` · 步距规 ${stepGauge.segments.length} 段` : ""}
+          </p>
+          <label className="mb-2 flex items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={applyGeomOnImport}
+              onChange={(e) => setApplyGeomOnImport(e.target.checked)}
+            />
+            导入 SuperDMIS 测点时施加几何补偿（机台已经补过的结果不要勾）
+          </label>
+          <Button size="xs" variant="outline" onClick={clearGeom21}>
+            <Trash2 data-icon="inline-start" />
+            清除补偿表
+          </Button>
+        </Section>
+
+        <Section
+          title="③ 零件坐标系（3-2-1 找正）"
           badge={evaluation?.aligned ? <Badge variant="secondary">已建立</Badge> : <Badge variant="outline">未建立</Badge>}
         >
           {evaluation ? (
@@ -250,7 +312,7 @@ export function CoordsPanel() {
           )}
         </Section>
 
-        <Section title="③ 加工中心工件坐标系">
+        <Section title="④ 加工中心工件坐标系">
           <p className="mb-2 text-xs text-muted-foreground">
             托盘在加工中心上的零点只需首次标定一次，之后零点定位系统保证重复定位。工件坐标系 = 托盘零点 + 零件相对托盘的偏差。
           </p>

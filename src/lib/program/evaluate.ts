@@ -1,5 +1,6 @@
 import type { Vec3 } from "@/lib/geom"
 import { align321 } from "@/lib/coords/alignment"
+import { bestFitAlignment, type FitPair } from "@/lib/coords/best-fit"
 import { palletOffset } from "@/lib/coords/work-offset"
 import { fitCircle, fitLine, fitPlane, fitSphere, probeCompensation } from "@/lib/measure/fit"
 import { coaxiality, parallelism, perpendicularity, positionDiameter } from "@/lib/measure/gdt"
@@ -95,6 +96,29 @@ export function evaluateProgram(program: MeasurementProgram, hits: StepHits[], c
       alignmentNote = "已按 3-2-1 建立零件坐标系（上表面 / 前侧边 / 左侧点）。"
     } else {
       alignmentNote = "找正特征测量失败，零件坐标系未建立，位置度按名义装夹评价。"
+    }
+  } else {
+    const pairs: FitPair[] = []
+    for (const entry of hits) {
+      const step = program.steps.find((s) => s.id === entry.stepId)
+      if (!step) continue
+      for (const h of entry.hits) {
+        const p = step.points.find((pt) => pt.id === h.pointId)
+        if (!p) continue
+        pairs.push({
+          nominal: p.nominal,
+          normal: scale(p.approach, -1),
+          measured: probeCompensation.point(h.center, h.approach, ctx.tipRadius),
+        })
+      }
+    }
+    if (pairs.length >= 6) {
+      const fit = bestFitAlignment(pairs, ctx.placement)
+      if (fit.ok) {
+        partToMachine = fit.partToMachine
+        aligned = true
+        alignmentNote = `已按 ${pairs.length} 个测点做点到面最佳拟合，建立 CAD 零件坐标系（残差 RMS ${(fit.rms * 1000).toFixed(1)} μm，最大 ${(fit.maxAbs * 1000).toFixed(1)} μm）。`
+      } else alignmentNote = `最佳拟合未建立：${fit.reason}。位置度按名义装夹评价。`
     }
   }
 

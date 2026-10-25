@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# OpenCascade wasm copied from node_modules by scripts/copy-occt.mjs
+/public/occt/occt-import-js.*

@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest"
 import { workOffsetFromPose } from "@/lib/coords/work-offset"
-import { DEFAULT_MACHINE_TOOL, NOMINAL_PART_ON_PALLET, PALLET, PLATE, PROBE, nominalPartToMachine } from "@/lib/machine/setup"
+import {
+  DEFAULT_MACHINE_TOOL,
+  NOMINAL_PART_ON_PALLET,
+  PALLET,
+  PLATE,
+  PROBE,
+  nominalPartToMachine,
+  probeTravelsForRun,
+} from "@/lib/machine/setup"
 import { applyPoint, compose, toPoseDeg } from "@/lib/math/transform"
 import { transformNcProgram } from "@/lib/nc/transform"
 import { createDemoProgram, createPostProgram } from "@/lib/program/demo"
@@ -213,5 +221,30 @@ describe("预检闭环（仿真）", () => {
         false
       )
     ).rejects.toThrow("碰撞风险")
+  })
+
+  it("SetupTool 出厂 2 mm 搜索只给真机，仿真仍用 12 mm", () => {
+    expect(
+      probeTravelsForRun({ driveHardware: false, maccConnected: false, retractMm: 3, searchMm: 2 })
+    ).toEqual({ retract: PROBE.retract, searchTravel: PROBE.searchTravel })
+    expect(probeTravelsForRun({ driveHardware: true, maccConnected: true, retractMm: 3, searchMm: 2 })).toEqual({
+      retract: 3,
+      searchTravel: 2,
+    })
+  })
+
+  it("用 SetupTool 2 mm 搜索跑仿真会全部未触发", async () => {
+    const random = seeded(7)
+    const truth = createTruth(random)
+    const driver = instantDriver(truth, random)
+    const placement = nominalPartToMachine(truth.palletToMachine)
+    const program = createDemoProgram()
+    const clearanceZ = applyPoint(placement, { x: 0, y: 0, z: 0 }).z + PROBE.clearanceAbovePart
+    const hits = await executeProgram(program, driver, {
+      ...options(truth, placement, truth.tipRadius, clearanceZ),
+      retract: 3,
+      searchTravel: 2,
+    })
+    expect(hits.some((h) => h.error?.includes("搜索行程内未触发"))).toBe(true)
   })
 })

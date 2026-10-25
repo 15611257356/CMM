@@ -28,6 +28,13 @@ export type ProgramStep = {
   axis?: Vec3
   /** 圆：直径公差（±mm）。未设置时不判尺寸。 */
   sizeTolerance?: number
+  /** 孔内测点的预触距离上限：小孔里回退不能越过孔中心。 */
+  maxRetract?: number
+  /**
+   * 孔口外的进入点（零件坐标，在轴线上）。有它时先到进入点再沿轴线进孔，
+   * 测完原路退出，所以横孔、斜孔也不会在抬刀时撞孔壁。
+   */
+  entry?: Vec3
 }
 
 export type GdtType =
@@ -63,6 +70,8 @@ export type MeasurementProgram = {
   gdt: GdtCheck[]
   /** 三项都指定后才会做 3-2-1。 */
   alignment?: Partial<AlignmentDef>
+  /** 测点取自哪个 CAD 模型（文件名）；刷新后恢复模型时据此决定是否保留程序。 */
+  modelName?: string
 }
 
 export type ProbeHit = {
