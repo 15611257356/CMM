@@ -70,8 +70,11 @@ export const NOMINAL_PART_ON_PALLET: RigidTransform = fromPoseDeg({
   rx: 0,
 })
 
-export function nominalPartToMachine(palletToMachine: RigidTransform): RigidTransform {
-  return compose(palletToMachine, NOMINAL_PART_ON_PALLET)
+export function nominalPartToMachine(
+  palletToMachine: RigidTransform,
+  partOnPallet: RigidTransform = NOMINAL_PART_ON_PALLET
+): RigidTransform {
+  return compose(palletToMachine, partOnPallet)
 }
 
 export const DEFAULT_MACHINE_TOOL: MachineToolConfig = {

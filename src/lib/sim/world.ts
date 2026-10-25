@@ -1,7 +1,16 @@
 import type { Vec3 } from "@/lib/geom"
-import { PALLET, PLATE } from "@/lib/machine/setup"
+import { NOMINAL_PART_ON_PALLET, PALLET, PLATE } from "@/lib/machine/setup"
 import { add, scale } from "@/lib/math/linalg"
-import { applyPoint, compose, fromPoseDeg, invert, type PoseDeg, type RigidTransform } from "@/lib/math/transform"
+import {
+  applyPoint,
+  compose,
+  fromPoseDeg,
+  invert,
+  toPoseDeg,
+  type PoseDeg,
+  type RigidTransform,
+} from "@/lib/math/transform"
+import type { ModelDistance } from "@/lib/model/distance"
 
 /**
  * 仿真世界：用有向距离场描述大理石台面、零点托盘、标准球和零件，
@@ -20,7 +29,11 @@ export type SimTruth = {
   tipRadius: number
   /** 单点重复性噪声（mm，均匀分布半宽）。 */
   noise: number
+  /** 导入模型时，零件表面用模型距离场代替示例底板。 */
+  model?: ModelDistance
 }
+
+export type TruthPart = { nominalOnPallet: RigidTransform; model: ModelDistance }
 
 function boxSdf(p: Vec3, min: Vec3, max: Vec3): number {
   const cx = (min.x + max.x) / 2
@@ -34,18 +47,21 @@ function boxSdf(p: Vec3, min: Vec3, max: Vec3): number {
   return outside + inside
 }
 
-export function createTruth(random: () => number = Math.random): SimTruth {
+/** 仿真装夹：在名义位姿上叠加装夹误差（X/Y ±1.5 mm，Z ±0.015 mm，转角 ±0.35°）。 */
+export function createTruth(random: () => number = Math.random, part?: TruthPart): SimTruth {
   const r = (span: number) => (random() - 0.5) * 2 * span
   const palletError = fromPoseDeg({ x: 0.0123, y: -0.0083, z: 0.0041, rz: 0, ry: 0, rx: 0 })
+  const nominal = toPoseDeg(part?.nominalOnPallet ?? NOMINAL_PART_ON_PALLET)
   const partPose: PoseDeg = {
-    x: -PLATE.w / 2 + r(1.5),
-    y: -PLATE.d / 2 + r(1.5),
-    z: PLATE.h + r(0.015),
-    rz: r(0.35),
-    ry: r(0.002),
-    rx: r(0.002),
+    x: nominal.x + r(1.5),
+    y: nominal.y + r(1.5),
+    z: nominal.z + r(0.015),
+    rz: nominal.rz + r(0.35),
+    ry: nominal.ry + r(0.002),
+    rx: nominal.rx + r(0.002),
   }
   return {
+    ...(part ? { model: part.model } : {}),
     palletToMachine: compose(PALLET.nominalToMachine, palletError),
     partToPallet: fromPoseDeg(partPose),
     partPose,
@@ -81,8 +97,12 @@ export function sceneSdf(truth: SimTruth, p: Vec3): number {
   const stem = Math.max(Math.hypot(pl.x - s.center.x, pl.y - s.center.y) - s.stemRadius, pl.z - stemTop, -pl.z)
 
   const pp = applyPoint(invert(truth.partToPallet), pl)
-  let part = boxSdf(pp, { x: 0, y: 0, z: -PLATE.h }, { x: PLATE.w, y: PLATE.d, z: 0 })
-  for (const h of truth.holes) part = Math.max(part, h.r - Math.hypot(pp.x - h.x, pp.y - h.y))
+  let part: number
+  if (truth.model) part = truth.model.distance(pp)
+  else {
+    part = boxSdf(pp, { x: 0, y: 0, z: -PLATE.h }, { x: PLATE.w, y: PLATE.d, z: 0 })
+    for (const h of truth.holes) part = Math.max(part, h.r - Math.hypot(pp.x - h.x, pp.y - h.y))
+  }
 
   return Math.min(table, pallet, sphere, stem, part)
 }

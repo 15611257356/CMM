@@ -25,6 +25,13 @@ export type ProgramStep = {
   inner?: boolean
   /** 圆的名义轴线方向（零件坐标），默认 +Z。 */
   axis?: Vec3
+  /** 孔内测点的预触距离上限：小孔里回退不能越过孔中心。 */
+  maxRetract?: number
+  /**
+   * 孔口外的进入点（零件坐标，在轴线上）。有它时先到进入点再沿轴线进孔，
+   * 测完原路退出，所以横孔、斜孔也不会在抬刀时撞孔壁。
+   */
+  entry?: Vec3
 }
 
 export type GdtType =
