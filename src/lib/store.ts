@@ -10,7 +10,9 @@ import {
   nominalPartToMachine,
 } from "@/lib/machine/setup"
 import { applyPoint, invert, type RigidTransform } from "@/lib/math/transform"
-import { HardwareMotionController } from "@/lib/motion/hardware-stub"
+import { MaccBridgeController } from "@/lib/macc/controller"
+import { MACC_TEMP_PAIRING } from "@/lib/macc/errors"
+import { DEFAULT_MACC_BRIDGE, emptyTelemetry, type MaccTelemetry } from "@/lib/macc/protocol"
 import { SimulatedMotionController } from "@/lib/motion/simulated-controller"
 import { MotionError, type MotionSnapshot } from "@/lib/motion/types"
 import { circleStep, createDemoProgram } from "@/lib/program/demo"
@@ -56,7 +58,7 @@ export type DroFrame = "machine" | "pallet" | "part"
 export type NcMode = "offset" | "rewrite"
 
 export const motion = new SimulatedMotionController()
-export const hardwareMotion = new HardwareMotionController()
+export const hardwareMotion = new MaccBridgeController()
 export const hardwareCamera = new HardwareCameraDriver()
 
 function readJson<T>(key: string): T | null {
@@ -110,6 +112,9 @@ type AppState = {
   geom21: Geom21
   applyGeomOnImport: boolean
   stepGauge: StepGaugeTruth | null
+  macc: MaccTelemetry
+  driveHardware: boolean
+  maccBusy: boolean
   hydrateFromStorage: () => void
   log: (level: LogLevel, message: string) => void
   setView: (view: CenterView) => void
@@ -142,6 +147,10 @@ type AppState = {
   setApplyGeomOnImport: (value: boolean) => void
   setGeom21: (patch: Partial<Geom21>) => void
   clearGeom21: () => void
+  connectMacc: (url?: string) => Promise<void>
+  disconnectMacc: () => void
+  setDriveHardware: (value: boolean) => void
+  setMaccTemperatureComp: (value: boolean) => Promise<void>
 }
 
 function downloadText(filename: string, text: string) {
@@ -171,10 +180,15 @@ export function partFrameOf(s: Pick<AppState, "calibration" | "evaluation">): Ri
   return s.evaluation?.aligned ? s.evaluation.partToMachine : placementOf(s)
 }
 
+const liveMotion = () => {
+  const s = useCmmStore.getState()
+  return s.driveHardware && s.macc.connected ? hardwareMotion : motion
+}
+
 const driver: ProbeDriver = {
-  position: () => motion.getSnapshot().position,
-  moveTo: (p, speed) => motion.moveTo(p, speed),
-  probe: (d, maxTravel, speed) => motion.probe(d, maxTravel, speed),
+  position: () => liveMotion().getSnapshot().position,
+  moveTo: (p, speed) => liveMotion().moveTo(p, speed),
+  probe: (d, maxTravel, speed) => liveMotion().probe(d, maxTravel, speed),
 }
 
 function autoGdt(step: ProgramStep): GdtCheck[] {
@@ -203,10 +217,12 @@ export const useCmmStore = create<AppState>((set, get) => {
     rapidSpeed: get().rapidSpeed,
     measureSpeed: get().measureSpeed,
     probeSpeed: get().probeSpeed,
-    checkPath: (from, to) =>
-      segmentClearance(get().truth, from, to) < 0
+    checkPath: (from, to) => {
+      if (get().driveHardware && get().macc.connected) return null
+      return segmentClearance(get().truth, from, to) < 0
         ? `路径 (${from.x.toFixed(1)}, ${from.y.toFixed(1)}, ${from.z.toFixed(1)}) → (${to.x.toFixed(1)}, ${to.y.toFixed(1)}, ${to.z.toFixed(1)}) 与工件或托盘干涉，已拒绝运动`
-        : null,
+        : null
+    },
     beforeMove: async () => {
       while (get().paused && !get().abortRequested) await new Promise((r) => setTimeout(r, 80))
       if (get().abortRequested) throw new MotionError("程序被中止", "estop")
@@ -264,6 +280,9 @@ export const useCmmStore = create<AppState>((set, get) => {
     geom21: emptyGeom21(),
     applyGeomOnImport: false,
     stepGauge: null,
+    macc: emptyTelemetry(),
+    driveHardware: false,
+    maccBusy: false,
 
     hydrateFromStorage: () => {
       const program = readJson<MeasurementProgram>(PROGRAM_KEY)
@@ -366,19 +385,19 @@ export const useCmmStore = create<AppState>((set, get) => {
 
     startJog: (axis, direction) => {
       try {
-        motion.jog(axis, direction, get().jogSpeed)
+        liveMotion().jog(axis, direction, get().jogSpeed)
       } catch (error) {
         get().log("error", error instanceof Error ? error.message : "点动失败")
       }
     },
 
-    stopJog: () => motion.stopJog(),
+    stopJog: () => liveMotion().stopJog(),
 
     home: async () => {
       if (get().running) return
       try {
         get().log("info", "回零：先抬 Z，再回 X/Y…")
-        await motion.home(get().rapidSpeed)
+        await liveMotion().home(get().rapidSpeed)
         get().log("info", "已回到机械原点，允许自动运行")
       } catch (error) {
         get().log("error", error instanceof Error ? error.message : "回零失败")
@@ -387,12 +406,12 @@ export const useCmmStore = create<AppState>((set, get) => {
 
     estop: () => {
       set({ abortRequested: true, paused: false })
-      motion.estop()
+      liveMotion().estop()
       get().log("error", "急停已触发，运动已切断。复位后必须重新回零")
     },
 
     resetEstop: () => {
-      motion.resetEstop()
+      liveMotion().resetEstop()
       set({ abortRequested: false })
       get().log("info", "急停已复位，请回零")
     },
@@ -699,6 +718,50 @@ export const useCmmStore = create<AppState>((set, get) => {
         get().log("error", error instanceof Error ? error.message : "导入失败")
       }
     },
+
+    connectMacc: async (url = DEFAULT_MACC_BRIDGE) => {
+      set({ maccBusy: true, macc: { ...get().macc, bridgeUrl: url } })
+      try {
+        await hardwareMotion.connect(url)
+        set({ macc: hardwareMotion.getTelemetry() })
+        get().log("info", `已连接 MACC 桥接 ${url}。序列号 ${hardwareMotion.getTelemetry().serial || "—"}`)
+      } catch (error) {
+        set({ driveHardware: false, macc: hardwareMotion.getTelemetry() })
+        get().log("error", error instanceof Error ? error.message : "连接 MACC 失败")
+      } finally {
+        set({ maccBusy: false })
+      }
+    },
+
+    disconnectMacc: () => {
+      hardwareMotion.disconnect()
+      set({ driveHardware: false, macc: emptyTelemetry(get().macc.bridgeUrl) })
+      get().log("info", "已断开 MACC")
+    },
+
+    setDriveHardware: (driveHardware) => {
+      if (driveHardware && !get().macc.connected) {
+        get().log("warn", "还没有连上 MACC 桥接，不能把点动/自动运行切到真机")
+        return
+      }
+      set({ driveHardware })
+      get().log(
+        driveHardware ? "warn" : "info",
+        driveHardware
+          ? "真机运动已打开：点动、回零和预检程序走 MACC。急停仍应走硬件回路。"
+          : "已回到仿真控制器"
+      )
+    },
+
+    setMaccTemperatureComp: async (value) => {
+      try {
+        await hardwareMotion.setTemperatureCompensation(value)
+        set({ macc: hardwareMotion.getTelemetry() })
+        get().log(value ? "warn" : "info", value ? MACC_TEMP_PAIRING.note : "已关闭控制器温度补偿")
+      } catch (error) {
+        get().log("error", error instanceof Error ? error.message : "温度补偿设置失败")
+      }
+    },
   }
 })
 
@@ -707,10 +770,20 @@ if (typeof window !== "undefined") {
     simulateTouch(useCmmStore.getState().truth, start, direction, maxTravel)
   )
   motion.subscribe((snapshot) => {
-    const prev = useCmmStore.getState().motion
+    const s = useCmmStore.getState()
+    if (s.driveHardware && s.macc.connected) return
+    const prev = s.motion
     useCmmStore.setState({ motion: snapshot })
     if (snapshot.overtravel && snapshot.overtravel !== prev.overtravel) {
       useCmmStore.getState().log("warn", `${snapshot.overtravel.toUpperCase()} 轴软限位触发`)
     }
+  })
+  hardwareMotion.subscribe((snapshot) => {
+    const s = useCmmStore.getState()
+    if (!(s.driveHardware && s.macc.connected)) return
+    useCmmStore.setState({ motion: snapshot })
+  })
+  hardwareMotion.subscribeTelemetry((macc) => {
+    useCmmStore.setState({ macc })
   })
 }

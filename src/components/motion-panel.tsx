@@ -6,14 +6,11 @@ import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { formatMm, type Axis } from "@/lib/geom"
 import { applyPoint, invert } from "@/lib/math/transform"
-import {
-  hardwareMotion,
-  palletToMachineOf,
-  partFrameOf,
-  useCmmStore,
-  type DroFrame,
-} from "@/lib/store"
+import { MACC_TEMP_PAIRING } from "@/lib/macc/errors"
+import { DEFAULT_MACC_BRIDGE } from "@/lib/macc/protocol"
+import { palletToMachineOf, partFrameOf, useCmmStore, type DroFrame } from "@/lib/store"
 import { Home, RotateCcw } from "lucide-react"
+import { useState } from "react"
 
 function AxisReadout({ axis, value }: { axis: Axis; value: number }) {
   const color = axis === "x" ? "text-red-500" : axis === "y" ? "text-lime-600 dark:text-lime-400" : "text-sky-500"
@@ -46,7 +43,14 @@ export function MotionPanel() {
   const resetEstop = useCmmStore((s) => s.resetEstop)
   const running = useCmmStore((s) => s.running)
   const logs = useCmmStore((s) => s.logs)
-  const hw = hardwareMotion.getSnapshot()
+  const macc = useCmmStore((s) => s.macc)
+  const driveHardware = useCmmStore((s) => s.driveHardware)
+  const maccBusy = useCmmStore((s) => s.maccBusy)
+  const connectMacc = useCmmStore((s) => s.connectMacc)
+  const disconnectMacc = useCmmStore((s) => s.disconnectMacc)
+  const setDriveHardware = useCmmStore((s) => s.setDriveHardware)
+  const setMaccTemperatureComp = useCmmStore((s) => s.setMaccTemperatureComp)
+  const [bridgeUrl, setBridgeUrl] = useState(macc.bridgeUrl || DEFAULT_MACC_BRIDGE)
 
   const frame =
     dro === "machine"
@@ -58,7 +62,7 @@ export function MotionPanel() {
   const disabled = running || motion.estop
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col overflow-y-auto">
       <div className="px-3 py-2">
         <div className="flex items-center justify-between">
           <p className="text-[11px] tracking-wide text-muted-foreground">测针球心位置</p>
@@ -84,8 +88,8 @@ export function MotionPanel() {
           <p className="mt-1 text-[10px] text-amber-600 dark:text-amber-400">零件坐标系未找正，当前按理论装夹显示</p>
         ) : null}
         <div className="mt-2 flex flex-wrap gap-1.5">
-          <Badge variant={motion.backend === "simulation" ? "secondary" : "outline"}>仿真控制器</Badge>
-          <Badge variant={hw.connected ? "default" : "outline"}>{hw.connected ? "运控卡在线" : "运控卡未连接"}</Badge>
+          <Badge variant={driveHardware ? "default" : "secondary"}>{driveHardware ? "MACC 真机" : "仿真控制器"}</Badge>
+          <Badge variant={macc.connected ? "default" : "outline"}>{macc.connected ? "MACC 在线" : "MACC 未连接"}</Badge>
           {motion.homed ? <Badge variant="outline">已回零</Badge> : <Badge variant="destructive">未回零</Badge>}
           {motion.estop ? <Badge variant="destructive">急停锁定</Badge> : null}
           {motion.overtravel ? <Badge variant="destructive">{motion.overtravel.toUpperCase()} 超程</Badge> : null}
@@ -137,6 +141,58 @@ export function MotionPanel() {
             复位急停
           </Button>
         </div>
+      </div>
+
+      <div className="border-t px-3 py-2">
+        <p className="mb-1 text-[11px] text-muted-foreground">力合 MACC / IPPServer</p>
+        <input
+          value={bridgeUrl}
+          onChange={(e) => setBridgeUrl(e.target.value)}
+          className="mb-1.5 h-8 w-full rounded-lg border border-input bg-transparent px-2 font-mono text-xs"
+          spellCheck={false}
+        />
+        <div className="flex flex-wrap gap-1.5">
+          {macc.connected ? (
+            <Button size="xs" variant="outline" onClick={disconnectMacc} disabled={maccBusy}>
+              断开
+            </Button>
+          ) : (
+            <Button size="xs" onClick={() => void connectMacc(bridgeUrl)} disabled={maccBusy}>
+              {maccBusy ? "连接中…" : "连接桥接"}
+            </Button>
+          )}
+        </div>
+        {macc.connected ? (
+          <dl className="mt-2 grid grid-cols-2 gap-x-2 gap-y-0.5 font-mono text-[11px] text-muted-foreground">
+            <dt>序列号</dt>
+            <dd className="truncate">{macc.serial || "—"}</dd>
+            <dt>固件 F/D</dt>
+            <dd className="truncate">
+              {macc.firmwareF || "—"} / {macc.firmwareD || "—"}
+            </dd>
+            <dt>工件温度</dt>
+            <dd>{macc.partTempC === null ? "—" : `${macc.partTempC.toFixed(2)} °C`}</dd>
+          </dl>
+        ) : null}
+        <label className="mt-2 flex items-center gap-2 text-xs">
+          <input
+            type="checkbox"
+            checked={driveHardware}
+            disabled={!macc.connected}
+            onChange={(e) => setDriveHardware(e.target.checked)}
+          />
+          点动/回零/自动运行走真机（未勾选仍是仿真）
+        </label>
+        <label className="mt-1 flex items-center gap-2 text-xs">
+          <input
+            type="checkbox"
+            checked={macc.temperatureComp}
+            disabled={!macc.connected}
+            onChange={(e) => void setMaccTemperatureComp(e.target.checked)}
+          />
+          使能控制器温度补偿
+        </label>
+        <p className="mt-1 text-[10px] leading-snug text-amber-600 dark:text-amber-400">{MACC_TEMP_PAIRING.note}</p>
       </div>
 
       <div className="min-h-0 flex-1 border-t">

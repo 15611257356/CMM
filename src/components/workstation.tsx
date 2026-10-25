@@ -49,7 +49,7 @@ function HeaderBar() {
           {running ? <Badge>{runLabel}中</Badge> : null}
         </div>
         <p className="hidden text-xs text-muted-foreground sm:block">
-          SuperDMIS 采点 · X-Inspect 补偿 · 本机 3-2-1 找正 · 输出加工坐标系
+          SuperDMIS · IPPServer I++ · MACC 控制器 · 本机找正与 G54
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
