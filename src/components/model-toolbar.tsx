@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { MODEL_ACCEPT } from "@/lib/model/load"
 import { FACE_KIND_LABEL, analyzeFace } from "@/lib/model/recognize"
+import type { FaceInfo, PartModel } from "@/lib/model/types"
 import { useCmmStore, type PickMode } from "@/lib/store"
 import { Box, Check, FileUp, MousePointerClick, Route, RotateCw, X } from "lucide-react"
 import { useMemo, useRef } from "react"
@@ -44,6 +45,26 @@ function faceSummary(info: ReturnType<typeof analyzeFace>): string {
   return FACE_KIND_LABEL[info.kind]
 }
 
+function faceLabel(info: FaceInfo): string {
+  if (info.kind === "cylinder") {
+    const c = info.point!
+    return `${info.inner ? "孔" : "轴"} Ø${(info.radius! * 2).toFixed(1)} (${c.x.toFixed(0)}, ${c.y.toFixed(0)}, ${c.z.toFixed(0)})`
+  }
+  if (info.kind === "sphere") return `球 Ø${(info.radius! * 2).toFixed(1)}`
+  if (info.kind === "plane") {
+    const n = info.normal!
+    const side = Math.abs(n.z) >= Math.abs(n.x) && Math.abs(n.z) >= Math.abs(n.y) ? (n.z > 0 ? "上" : "下") : Math.abs(n.y) >= Math.abs(n.x) ? (n.y > 0 ? "后" : "前") : n.x > 0 ? "右" : "左"
+    return `${side}平面 z${info.point!.z.toFixed(0)} · ${info.area.toFixed(0)} mm²`
+  }
+  return FACE_KIND_LABEL[info.kind]
+}
+
+function recognizableFaces(model: PartModel): FaceInfo[] {
+  return Array.from({ length: model.faceCount }, (_, i) => analyzeFace(model, i))
+    .filter((f) => f.kind !== "other" && f.area > 5)
+    .sort((a, b) => Number(b.kind === "cylinder") - Number(a.kind === "cylinder") || b.area - a.area)
+}
+
 function formatSeconds(s: number): string {
   const m = Math.floor(s / 60)
   return m ? `${m} 分 ${Math.round(s % 60)} 秒` : `${Math.round(s)} 秒`
@@ -68,7 +89,10 @@ export function ModelToolbar() {
   const loadSample = useCmmStore((s) => s.loadSampleModel)
   const clearModel = useCmmStore((s) => s.clearModel)
   const running = useCmmStore((s) => s.running)
+  const pickOnModel = useCmmStore((s) => s.pickOnModel)
+  const setHoverFace = useCmmStore((s) => s.setHoverFace)
   const fileRef = useRef<HTMLInputElement>(null)
+  const faces = useMemo(() => (model ? recognizableFaces(model) : []), [model])
 
   const hoverInfo = useMemo(() => (model && hoverFace !== null ? analyzeFace(model, hoverFace) : null), [model, hoverFace])
   const issueNames = plan?.issues.map((i) => steps.find((s) => s.id === i.stepId)?.name ?? i.stepId) ?? []
@@ -106,7 +130,7 @@ export function ModelToolbar() {
   }
 
   return (
-    <div className="pointer-events-none absolute inset-x-2 top-2 flex flex-col gap-1.5">
+    <div className="pointer-events-none absolute inset-2 flex flex-col gap-1.5">
       <div className="pointer-events-auto flex flex-wrap items-center gap-1 self-start rounded-lg border bg-card/90 px-2 py-1.5 text-xs shadow-sm backdrop-blur">
         <MousePointerClick className="size-3.5 text-muted-foreground" />
         {MODES.map((m) => (
@@ -219,6 +243,31 @@ export function ModelToolbar() {
           </span>
         </p>
       </div>
+
+      {pickMode === "face" || pickMode === "line" ? (
+        <div className="pointer-events-auto mt-auto max-h-44 w-56 self-start overflow-y-auto rounded-lg border bg-card/90 p-1.5 text-xs shadow-sm backdrop-blur">
+          <p className="px-1 pb-1 text-[10px] text-muted-foreground">识别出的面（点这里或直接点模型）</p>
+          <ul className="space-y-0.5">
+            {faces.map((f) => (
+              <li key={f.id}>
+                <button
+                  type="button"
+                  disabled={running}
+                  className={`w-full rounded px-1.5 py-0.5 text-left hover:bg-muted ${hoverFace === f.id ? "bg-sky-500/15" : ""}`}
+                  onMouseEnter={() => setHoverFace(f.id)}
+                  onMouseLeave={() => setHoverFace(null)}
+                  onClick={() => {
+                    const tri = model.faceOf.findIndex((id) => id === f.id)
+                    if (tri >= 0) pickOnModel({ face: f.id, tri, point: f.point ?? { x: 0, y: 0, z: 0 } })
+                  }}
+                >
+                  {faceLabel(f)}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </div>
   )
 }

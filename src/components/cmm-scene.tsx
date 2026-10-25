@@ -1,7 +1,7 @@
 "use client"
 
 import { OrbitControls } from "@react-three/drei"
-import { Canvas, type ThreeEvent } from "@react-three/fiber"
+import { Canvas, useThree, type ThreeEvent } from "@react-three/fiber"
 import { MACHINE, type Vec3 } from "@/lib/geom"
 import { PALLET, PLATE } from "@/lib/machine/setup"
 import { add, scale } from "@/lib/math/linalg"
@@ -10,7 +10,7 @@ import type { PartModel } from "@/lib/model/types"
 import { partToMachine } from "@/lib/sim/world"
 import { partFrameOf, placementOf, useCmmStore } from "@/lib/store"
 import { useEffect, useMemo, type ReactNode } from "react"
-import { BufferAttribute, BufferGeometry, EdgesGeometry, Float32BufferAttribute, Matrix4 } from "three"
+import { BufferAttribute, BufferGeometry, EdgesGeometry, Float32BufferAttribute, Matrix4, type Vector3 } from "three"
 
 /** 机床坐标 (x, y, z) → three.js (x, z, y)，Z 朝上。 */
 function m(x: number, y: number, z: number): [number, number, number] {
@@ -440,6 +440,31 @@ function ProgramPoints({ T }: { T: RigidTransform }) {
   )
 }
 
+const SCENE_OFFSET: [number, number, number] = [-250, 0, -200]
+
+/** 导入模型后把视角拉近到零件上，否则小孔在默认视角下只有几个像素，点不中。 */
+function FocusOnModel({ model, T }: { model: PartModel; T: RigidTransform }) {
+  const camera = useThree((s) => s.camera)
+  const controls = useThree((s) => s.controls) as unknown as { target: Vector3; update: () => void } | null
+  useEffect(() => {
+    if (!controls) return
+    const c = applyPoint(T, {
+      x: (model.min.x + model.max.x) / 2,
+      y: (model.min.y + model.max.y) / 2,
+      z: (model.min.z + model.max.z) / 2,
+    })
+    const [x, y, z] = m(c.x, c.y, c.z)
+    const size = Math.max(model.max.x - model.min.x, model.max.y - model.min.y, model.max.z - model.min.z)
+    const d = Math.max(160, size * 1.9)
+    controls.target.set(x + SCENE_OFFSET[0], y + SCENE_OFFSET[1], z + SCENE_OFFSET[2])
+    camera.position.set(controls.target.x + d * 0.55, controls.target.y + d * 0.85, controls.target.z + d * 0.75)
+    controls.update()
+    // 只在换模型时重置视角，换装夹朝向或找正后不打断操作者
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [model, controls])
+  return null
+}
+
 function SceneContents() {
   const position = useCmmStore((s) => s.motion.position)
   const truth = useCmmStore((s) => s.truth)
@@ -460,7 +485,7 @@ function SceneContents() {
       <ambientLight intensity={0.55} />
       <directionalLight position={[260, 520, 260]} intensity={1.1} />
       <directionalLight position={[-200, 200, -140]} intensity={0.35} />
-      <group position={[-250, 0, -200]}>
+      <group position={SCENE_OFFSET}>
         <Granite />
         <Pallet T={truth.palletToMachine} />
         {model ? (
@@ -483,7 +508,8 @@ function SceneContents() {
         <Touches />
       </group>
       <gridHelper args={[800, 32, "#3f4652", "#2a3038"]} position={[0, -60, 0]} />
-      <OrbitControls makeDefault minDistance={120} maxDistance={1600} target={[0, 70, 0]} />
+      <OrbitControls makeDefault minDistance={60} maxDistance={1600} target={[0, 70, 0]} />
+      {model ? <FocusOnModel model={model} T={nominal} /> : null}
     </>
   )
 }

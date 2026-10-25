@@ -303,8 +303,9 @@ export class IppMotionController implements MotionController {
     this.buffer = lines.pop() ?? ""
     for (const line of lines) {
       if (!line.trim()) continue
-      this.trace(`← ${line.trim()}`)
       const reply = parseIppLine(line)
+      // OnMoveReport 每 0.1 s 一条，记进通讯记录会把指令应答全冲掉
+      if (!(reply?.tag.startsWith("E") && reply.kind === "data")) this.trace(`← ${line.trim()}`)
       if (!reply) continue
       if (reply.tag.startsWith("E")) {
         if (reply.kind === "error") {
