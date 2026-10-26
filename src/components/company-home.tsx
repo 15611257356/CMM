@@ -29,9 +29,16 @@ export function CompanyHome() {
               <li>装零件，运行预检程序：上表面 / 前侧边 / 左侧点找正，再测孔</li>
               <li>得到零件相对托盘的 X/Y/Z 偏差和转角，输出工件坐标系或改写程序</li>
             </ol>
-            <Link href="/cmm">
-              <Button className="w-full sm:w-auto">打开预检机工作站</Button>
-            </Link>
+            <div className="flex flex-wrap gap-2">
+              <Link href="/cmm">
+                <Button className="w-full sm:w-auto">打开预检机工作站</Button>
+              </Link>
+              <Link href="/manual">
+                <Button variant="outline" className="w-full sm:w-auto">
+                  使用说明
+                </Button>
+              </Link>
+            </div>
           </CardContent>
         </Card>
 

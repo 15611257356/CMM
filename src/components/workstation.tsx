@@ -46,6 +46,9 @@ function HeaderBar() {
           <Link href="/" className="text-sm font-semibold tracking-tight hover:underline sm:text-base">
             预检机 · 预调测量
           </Link>
+          <Link href="/manual" className="text-xs text-muted-foreground hover:underline">
+            使用说明
+          </Link>
           <Badge variant={liveHardware ? "destructive" : "secondary"}>
             {liveHardware ? `真机 · ${channel === "ipp" ? "I++" : "MACC"}` : "仿真模式"}
           </Badge>
