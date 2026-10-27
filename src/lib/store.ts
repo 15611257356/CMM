@@ -1289,7 +1289,9 @@ export const useCmmStore = create<AppState>((set, get) => {
         const d = evaluation.pallet.delta
         get().log(
           "info",
-          `测量完成。零件相对零点托盘偏差 X ${d.x.toFixed(4)} Y ${d.y.toFixed(4)} Z ${d.z.toFixed(4)} mm，旋转 ${d.rz.toFixed(4)}°`,
+          evaluation.aligned
+            ? `测量完成。零件相对零点托盘偏差 X ${d.x.toFixed(4)} Y ${d.y.toFixed(4)} Z ${d.z.toFixed(4)} mm，旋转 ${d.rz.toFixed(4)}°`
+            : `测量完成。${evaluation.alignmentNote}`,
         )
         if (evaluation.pallet.tiltWarning) get().log("warn", evaluation.pallet.tiltWarning)
         const failed = evaluation.gdt.filter((g) => !g.passed).length

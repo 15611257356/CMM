@@ -339,17 +339,23 @@ export function MotionPanel() {
         ) : (
           <ScrollArea className="h-full max-h-60">
             <ul className="space-y-1 px-3 py-1 text-xs">
-              <li className="flex justify-between gap-2">
-                <span>装夹偏差 X/Y/Z</span>
-                <span className="font-mono text-muted-foreground">
-                  {evaluation.pallet.delta.x.toFixed(3)} / {evaluation.pallet.delta.y.toFixed(3)} /{" "}
-                  {evaluation.pallet.delta.z.toFixed(3)}
-                </span>
-              </li>
-              <li className="flex justify-between gap-2">
-                <span>装夹转角</span>
-                <span className="font-mono text-muted-foreground">{evaluation.pallet.delta.rz.toFixed(4)}°</span>
-              </li>
+              {evaluation.aligned ? (
+                <>
+                  <li className="flex justify-between gap-2">
+                    <span>装夹偏差 X/Y/Z</span>
+                    <span className="font-mono text-muted-foreground">
+                      {evaluation.pallet.delta.x.toFixed(3)} / {evaluation.pallet.delta.y.toFixed(3)} /{" "}
+                      {evaluation.pallet.delta.z.toFixed(3)}
+                    </span>
+                  </li>
+                  <li className="flex justify-between gap-2">
+                    <span>装夹转角</span>
+                    <span className="font-mono text-muted-foreground">{evaluation.pallet.delta.rz.toFixed(4)}°</span>
+                  </li>
+                </>
+              ) : (
+                <li className="text-amber-600 dark:text-amber-400">{evaluation.alignmentNote}</li>
+              )}
               {evaluation.features
                 .filter((f) => f.diameter !== undefined || !f.ok)
                 .map((f) => (
