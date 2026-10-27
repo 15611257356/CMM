@@ -10,6 +10,7 @@ import { VisionPanel } from "@/components/vision-panel"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { presetTarget } from "@/lib/program/preset-target"
 import { useCmmStore, type CenterView } from "@/lib/store"
 import { Crosshair, OctagonAlert, Pause, Play, Shuffle, WandSparkles } from "lucide-react"
 import dynamic from "next/dynamic"
@@ -37,6 +38,10 @@ function HeaderBar() {
   const triggerEstop = useCmmStore((s) => s.estop)
   const inspectMode = useCmmStore((s) => s.inspectMode)
   const autoPreset = useCmmStore((s) => s.autoPreset)
+  const hasModel = useCmmStore((s) => Boolean(s.model))
+  const modelProgram = useCmmStore((s) => s.program.modelName)
+  const stepCount = useCmmStore((s) => s.program.steps.length)
+  const preset = presetTarget({ hasModel, modelName: modelProgram, stepCount })
   const blocked = running || estop || !homed
 
   return (
@@ -69,7 +74,18 @@ function HeaderBar() {
           <Crosshair data-icon="inline-start" />
           建固定坐标系
         </Button>
-        <Button size="sm" onClick={() => void autoPreset()} disabled={blocked}>
+        <Button
+          size="sm"
+          title={
+            preset === "picked"
+              ? "按模型上已选的特征走轨迹并测量"
+              : preset === "need-picks"
+                ? "先在模型上选面或直线"
+                : "按夹具底板生成预调程序并测量"
+          }
+          onClick={() => void autoPreset()}
+          disabled={blocked}
+        >
           <WandSparkles data-icon="inline-start" />
           一键预调
         </Button>

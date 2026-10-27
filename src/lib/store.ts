@@ -29,6 +29,7 @@ import { appliedThermal, DEFAULT_THERMAL, type ThermalSettings } from "@/lib/mea
 import { autoProgram, type PartModel as PlatePart } from "@/lib/program/auto"
 import { circleStep, createDemoProgram, KIND_LABEL as KIND_NAME, PLATE_MODEL } from "@/lib/program/demo"
 import { exportDmis } from "@/lib/program/dmis"
+import { presetTarget } from "@/lib/program/preset-target"
 import { renameProgram, renameStep, setAlignmentRole, setCircleSpec, setGdtTolerance, setPointCount } from "@/lib/program/edit"
 import { applyDialYaw, indicateEdge, type IndicatorReading, type IndicatorResult } from "@/lib/program/indicator"
 import {
@@ -1165,12 +1166,32 @@ export const useCmmStore = create<AppState>((set, get) => {
         get().log("error", "未回零：先回零，再一键预调")
         return
       }
-      get().log("info", "一键预调：固定坐标系 → 自动编程 → 自动测量 → 自动找正 → 工件坐标系")
+      const target = presetTarget({
+        hasModel: Boolean(get().model),
+        modelName: get().program.modelName,
+        stepCount: get().program.steps.length,
+      })
+      if (target === "need-picks") {
+        get().log("warn", "模型上还没有测点。先用「点面」或「直线」选出特征，看到轨迹后再点一键预调")
+        return
+      }
+      const pickedNames = get().program.steps.map((step) => step.name)
       if (!get().calibration) {
+        get().log(
+          "info",
+          target === "picked"
+            ? "一键预调：先测标准球建立固定坐标系，再按你选的特征测量"
+            : "一键预调：先测标准球建立固定坐标系，再跑夹具底板预调程序",
+        )
         await get().calibratePallet()
         if (!get().calibration) return
       }
-      get().loadTemplate("preset")
+      if (target === "picked") {
+        get().log("info", `一键预调：按已选特征测量（${pickedNames.join("、")}）`)
+        await get().planPath()
+      } else {
+        get().loadTemplate("preset")
+      }
       await get().runProgram()
       const evaluation = get().evaluation
       const offset = get().report?.workOffset
